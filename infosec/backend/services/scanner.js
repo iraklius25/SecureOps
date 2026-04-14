@@ -9,11 +9,20 @@ const net = require('net');
 const db = require('../db');
 const logger = require('./logger');
 const { v4: uuidv4 } = require('uuid');
+const notifier = require('./notifier');
 
 // ── Nmap wrapper ──────────────────────────────────────────────
 function nmapScan(target, options = '') {
   return new Promise((resolve, reject) => {
-    const cmd = `nmap -sV -sC --version-intensity 5 -T4 -O --osscan-guess ${options} -oX - ${target}`;
+    // Extract timing flag from options so it overrides the default -T4
+    const timingMatch = options.match(/-T[0-5]/);
+    const timing = timingMatch ? timingMatch[0] : '-T4';
+    const extraOpts = options.replace(/-T[0-5]/, '').trim();
+    // Skip -sC and -O when -Pn light retry is used (avoids AV/IDS blocking)
+    const isLightScan = extraOpts.includes('-Pn') && extraOpts.includes('--version-intensity 3');
+    const cmd = isLightScan
+      ? `nmap -sV ${timing} ${extraOpts} -oX - ${target}`
+      : `nmap -sV -sC --version-intensity 5 ${timing} -O --osscan-guess ${extraOpts} -oX - ${target}`;
     logger.info(`Running: ${cmd}`);
     exec(cmd, { timeout: 300000, maxBuffer: 10 * 1024 * 1024 }, (err, stdout, stderr) => {
       if (err && !stdout) return reject(new Error(`nmap failed: ${stderr}`));
@@ -31,8 +40,10 @@ function parseNmapXML(xml) {
     const statusMatch  = block.match(/state="([^"]+)"/);
     if (!statusMatch || statusMatch[1] !== 'up') continue;
 
-    const ipMatch      = block.match(/addrtype="ipv4"[^>]*addr="([^"]+)"/);
-    const macMatch     = block.match(/addrtype="mac"[^>]*addr="([^"]+)"/);
+    const addrBlock    = block.match(/<address[^>]*addrtype="ipv4"[^>]*>/);
+    const ipMatch      = addrBlock ? addrBlock[0].match(/addr="([^"]+)"/) : null;
+    const macBlock     = block.match(/<address[^>]*addrtype="mac"[^>]*>/);
+    const macMatch     = macBlock ? macBlock[0].match(/addr="([^"]+)"/) : null;
     const hostnameM    = block.match(/hostname name="([^"]+)"/);
     const osMatch      = block.match(/<osclass[^>]*osfamily="([^"]+)"[^>]*osgen="([^"]*)"/);
     const osNameM      = block.match(/<osmatch[^>]*name="([^"]+)"/);
@@ -174,8 +185,33 @@ async function upsertAsset(host) {
   return { id: res.rows[0].id, asset_value: res.rows[0].asset_value, isNew: true };
 }
 
-// ── Save port data ────────────────────────────────────────────
-async function upsertPort(assetId, port) {
+// ── Save port data + track changes ───────────────────────────
+async function upsertPort(assetId, port, scanJobId) {
+  // Record history: was this port there before?
+  const existing = await db.query(
+    'SELECT id, service, product, version FROM asset_ports WHERE asset_id=$1 AND port=$2 AND protocol=$3',
+    [assetId, port.port, port.protocol]
+  );
+
+  if (existing.rows.length === 0) {
+    // New port discovered
+    await db.query(`
+      INSERT INTO asset_history (asset_id, scan_job_id, change_type, new_value, details)
+      VALUES ($1,$2,'port_added',$3,$4)
+    `, [assetId, scanJobId || null, `${port.port}/${port.protocol}`,
+        JSON.stringify({ port: port.port, protocol: port.protocol, service: port.service, product: port.product, version: port.version })]);
+  } else {
+    const old = existing.rows[0];
+    const oldSvc = `${old.product || ''}/${old.version || ''}`;
+    const newSvc = `${port.product || ''}/${port.version || ''}`;
+    if (oldSvc !== newSvc && (port.product || port.version)) {
+      await db.query(`
+        INSERT INTO asset_history (asset_id, scan_job_id, change_type, field, old_value, new_value)
+        VALUES ($1,$2,'service_changed','service',$3,$4)
+      `, [assetId, scanJobId || null, oldSvc, newSvc]);
+    }
+  }
+
   await db.query('DELETE FROM asset_ports WHERE asset_id = $1 AND port = $2 AND protocol = $3',
     [assetId, port.port, port.protocol]);
   const res = await db.query(`
@@ -229,9 +265,23 @@ async function runScan(target, scanJobId, options = {}) {
 
     let hosts = [];
     try {
-      const xml = await nmapScan(target, options.nmapArgs || '');
+      const nmapArgs = options.nmapArgs || '';
+      const xml = await nmapScan(target, nmapArgs);
       hosts = parseNmapXML(xml);
       logger.info(`Nmap found ${hosts.length} hosts for target ${target}`);
+
+      // If no hosts found and -Pn wasn't already used, retry with a lighter
+      // command: skip host discovery, no scripts, no OS detection.
+      // (common in networks where ICMP or aggressive probes are firewalled)
+      if (hosts.length === 0 && !nmapArgs.includes('-Pn')) {
+        logger.info(`No hosts found, retrying with -Pn + light scan for ${target}`);
+        const timingMatch2 = nmapArgs.match(/-T[0-5]/);
+        const timing2 = timingMatch2 ? timingMatch2[0] : '-T4';
+        const lightCmd = `${timing2} -Pn --version-intensity 3`;
+        const xml2 = await nmapScan(target, lightCmd);
+        hosts = parseNmapXML(xml2);
+        logger.info(`Light -Pn retry found ${hosts.length} hosts for target ${target}`);
+      }
     } catch (e) {
       logger.warn(`Nmap unavailable (${e.message}), falling back to TCP scan`);
       // Fallback: scan common ports on single IP
@@ -249,17 +299,43 @@ async function runScan(target, scanJobId, options = {}) {
       }
     }
 
+    // Detect removed ports (ports that existed before but weren't found in this scan)
+    const newPortSignatures = new Set(hosts.flatMap(h => h.ports.map(p => `${p.port}/${p.protocol}`)));
+
     for (const host of hosts) {
       hostsScanned++;
       const { id: assetId, asset_value, isNew } = await upsertAsset(host);
-      if (isNew) assetsFound++;
+      if (isNew) {
+        assetsFound++;
+        await db.query(`
+          INSERT INTO asset_history (asset_id, scan_job_id, change_type, new_value)
+          VALUES ($1,$2,'first_seen',$3)
+        `, [assetId, scanJobId, host.ip]);
+      }
+
+      // Track removed ports
+      const prevPorts = await db.query(
+        `SELECT port, protocol, service FROM asset_ports WHERE asset_id=$1`, [assetId]
+      );
+      for (const pp of prevPorts.rows) {
+        const sig = `${pp.port}/${pp.protocol}`;
+        if (!newPortSignatures.has(sig)) {
+          await db.query(`
+            INSERT INTO asset_history (asset_id, scan_job_id, change_type, old_value)
+            VALUES ($1,$2,'port_removed',$3)
+          `, [assetId, scanJobId, sig]);
+        }
+      }
 
       for (const port of host.ports) {
-        const portId = await upsertPort(assetId, port);
+        const portId = await upsertPort(assetId, port, scanJobId);
         const findings = await applyVulnRules(assetId, { ...port, portId }, asset_value);
         for (const vuln of findings) {
-          await saveVuln(vuln);
+          const vulnId = await saveVuln(vuln);
           vulnsFound++;
+          // Send notification for critical/high vulns
+          notifier.notifyVuln({ ...vuln, id: vulnId, ale: vuln.asset_value * vuln.exposure_factor / 100 * vuln.aro }, host.ip)
+            .catch(() => {});
         }
       }
     }
@@ -274,6 +350,11 @@ async function runScan(target, scanJobId, options = {}) {
         JSON.stringify({ hosts: hostsScanned, vulns: vulnsFound, assets: assetsFound })]);
 
     logger.info(`Scan ${scanJobId} complete: ${hostsScanned} hosts, ${vulnsFound} vulns, ${assetsFound} new assets`);
+
+    // Notify scan completion
+    const scanJob = await db.query('SELECT name, target FROM scan_jobs WHERE id=$1', [scanJobId]);
+    notifier.notifyScanComplete(scanJob.rows[0] || { name: null, target: '' }, { hostsScanned, vulnsFound, assetsFound })
+      .catch(() => {});
 
   } catch (err) {
     logger.error(`Scan ${scanJobId} failed: ${err.message}`);

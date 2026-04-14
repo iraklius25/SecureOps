@@ -82,12 +82,37 @@ router.put('/:id', auth, requireRole('admin','analyst'), async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// DELETE /api/assets/:id
-router.delete('/:id', auth, requireRole('admin'), async (req, res) => {
+// GET /api/assets/:id/history  — port/service change log
+router.get('/:id/history', auth, async (req, res) => {
   try {
-    await db.query('UPDATE assets SET status=$2 WHERE id=$1', [req.params.id, 'decommissioned']);
-    res.json({ message: 'Asset decommissioned' });
+    const r = await db.query(`
+      SELECT h.*, s.name AS scan_name
+      FROM asset_history h
+      LEFT JOIN scan_jobs s ON s.id = h.scan_job_id
+      WHERE h.asset_id = $1
+      ORDER BY h.created_at DESC LIMIT 100
+    `, [req.params.id]);
+    res.json(r.rows);
   } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// DELETE /api/assets/:id  — permanently deletes asset and all related data
+router.delete('/:id', auth, requireRole('admin'), async (req, res) => {
+  const client = await db.connect();
+  try {
+    await client.query('BEGIN');
+    // Remove risks referencing this asset's vulnerabilities first (no cascade on that FK)
+    await client.query(`DELETE FROM risks WHERE vulnerability_id IN (SELECT id FROM vulnerabilities WHERE asset_id=$1)`, [req.params.id]);
+    await client.query(`DELETE FROM risks WHERE asset_id=$1`, [req.params.id]);
+    // Now delete the asset — cascades to asset_ports, vulnerabilities, group_assets
+    const r = await client.query('DELETE FROM assets WHERE id=$1 RETURNING id', [req.params.id]);
+    if (!r.rows.length) { await client.query('ROLLBACK'); return res.status(404).json({ error: 'Asset not found' }); }
+    await client.query('COMMIT');
+    res.json({ message: 'Asset deleted' });
+  } catch (e) {
+    await client.query('ROLLBACK');
+    res.status(500).json({ error: e.message });
+  } finally { client.release(); }
 });
 
 module.exports = router;

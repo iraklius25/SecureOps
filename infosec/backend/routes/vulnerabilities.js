@@ -51,15 +51,43 @@ router.patch('/:id', auth, requireRole('admin','analyst'), async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// GET /api/vulns/:id/comments
+router.get('/:id/comments', auth, async (req, res) => {
+  try {
+    const r = await db.query(`
+      SELECT c.*, u.username, u.full_name
+      FROM vuln_comments c
+      LEFT JOIN users u ON u.id = c.user_id
+      WHERE c.vuln_id = $1
+      ORDER BY c.created_at ASC
+    `, [req.params.id]);
+    res.json(r.rows);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// POST /api/vulns/:id/comments
+router.post('/:id/comments', auth, requireRole('admin','analyst'), async (req, res) => {
+  const { comment } = req.body;
+  if (!comment?.trim()) return res.status(400).json({ error: 'Comment required' });
+  try {
+    const r = await db.query(`
+      INSERT INTO vuln_comments (vuln_id, user_id, comment)
+      VALUES ($1,$2,$3) RETURNING *
+    `, [req.params.id, req.user.id, comment.trim()]);
+    res.status(201).json(r.rows[0]);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 // Manual vuln creation
 router.post('/', auth, requireRole('admin','analyst'), async (req, res) => {
   const { asset_id, title, description, severity, cve_id, cvss_score, vuln_type, remediation, asset_value, exposure_factor, aro } = req.body;
   if (!asset_id || !title || !severity) return res.status(400).json({ error: 'asset_id, title, severity required' });
   try {
+    const risk_level = severity === 'informational' ? 'low' : severity;
     const r = await db.query(`
       INSERT INTO vulnerabilities (asset_id,title,description,severity,risk_level,cve_id,cvss_score,vuln_type,remediation,asset_value,exposure_factor,aro,detected_by)
-      VALUES ($1,$2,$3,$4,$4,$5,$6,$7,$8,$9,$10,$11,'manual') RETURNING *
-    `, [asset_id,title,description,severity,cve_id,cvss_score||null,vuln_type||'Manual',remediation,asset_value||50000,exposure_factor||30,aro||0.25]);
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,'manual') RETURNING *
+    `, [asset_id,title,description,severity,risk_level,cve_id,cvss_score||null,vuln_type||'Manual',remediation,asset_value||50000,exposure_factor||30,aro||0.25]);
     res.status(201).json(r.rows[0]);
   } catch (e) { res.status(500).json({ error: e.message }); }
 });

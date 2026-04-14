@@ -58,9 +58,9 @@ function GroupFormModal({ group, onClose, onSaved }) {
 }
 
 // ── Group detail modal (manage members) ─────────────────────────
-function GroupDetailModal({ groupId, onClose, onChanged, currentUserRole }) {
+function GroupDetailModal({ groupId, onClose, onChanged, currentUserRole, defaultTab = 'users' }) {
   const [group, setGroup]     = useState(null);
-  const [tab, setTab]         = useState('users');
+  const [tab, setTab]         = useState(defaultTab);
   const [allUsers, setAllUsers]   = useState([]);
   const [allAssets, setAllAssets] = useState([]);
   const [selUser, setSelUser]   = useState('');
@@ -221,7 +221,7 @@ function GroupDetailModal({ groupId, onClose, onChanged, currentUserRole }) {
 }
 
 // ── Main Groups page ─────────────────────────────────────────────
-export default function Groups() {
+export default function Groups({ defaultTab = 'users' }) {
   const { user } = useContext(AuthContext);
   const [groups, setGroups]       = useState([]);
   const [loading, setLoading]     = useState(true);
@@ -246,7 +246,7 @@ export default function Groups() {
     <div>
       <div className="page-header">
         <div>
-          <div className="page-title">Groups</div>
+          <div className="page-title">{defaultTab === 'assets' ? 'Asset Groups' : 'User Groups'}</div>
           <div className="page-subtitle">{groups.length} group{groups.length !== 1 ? 's' : ''}</div>
         </div>
         {isAdmin && (
@@ -319,6 +319,7 @@ export default function Groups() {
           onClose={() => setDetailId(null)}
           onChanged={load}
           currentUserRole={user?.role}
+          defaultTab={defaultTab}
         />
       )}
     </div>

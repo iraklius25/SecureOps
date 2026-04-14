@@ -8,6 +8,7 @@ const cron = require('node-cron');
 const logger = require('./services/logger');
 
 const app = express();
+app.set('trust proxy', 1);
 
 // ── Security middleware ────────────────────────────────────────
 app.use(helmet());
@@ -22,15 +23,20 @@ const limiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 200 });
 app.use('/api/', limiter);
 
 // ── Routes ─────────────────────────────────────────────────────
-app.use('/api/auth',     require('./routes/auth'));
-app.use('/api/assets',   require('./routes/assets'));
-app.use('/api/scans',    require('./routes/scans'));
-app.use('/api/vulns',    require('./routes/vulnerabilities'));
-app.use('/api/risks',    require('./routes/risks'));
-app.use('/api/reports',  require('./routes/reports'));
-app.use('/api/dashboard',require('./routes/dashboard'));
-app.use('/api/users',    require('./routes/users'));
-app.use('/api/groups',   require('./routes/groups'));
+app.use('/api/auth',           require('./routes/auth'));
+app.use('/api/assets',         require('./routes/assets'));
+app.use('/api/scans',          require('./routes/scans'));
+app.use('/api/vulns',          require('./routes/vulnerabilities'));
+app.use('/api/risks',          require('./routes/risks'));
+app.use('/api/reports',        require('./routes/reports'));
+app.use('/api/dashboard',      require('./routes/dashboard'));
+app.use('/api/users',          require('./routes/users'));
+app.use('/api/groups',         require('./routes/groups'));
+app.use('/api/notifications',  require('./routes/notifications'));
+app.use('/api/audit',          require('./routes/audit'));
+app.use('/api/apikeys',        require('./routes/apikeys'));
+app.use('/api/compliance',     require('./routes/compliance'));
+app.use('/api/settings',       require('./routes/settings'));
 
 // ── Health check ───────────────────────────────────────────────
 app.get('/health', (req, res) => res.json({ status: 'ok', version: '1.0.0', time: new Date() }));
@@ -39,6 +45,61 @@ app.get('/health', (req, res) => res.json({ status: 'ok', version: '1.0.0', time
 app.use((err, req, res, next) => {
   logger.error(`${err.status || 500} - ${err.message} - ${req.originalUrl}`);
   res.status(err.status || 500).json({ error: err.message || 'Internal server error' });
+});
+
+// ── Per-minute cron: trigger scheduled scans & auto-stop ──────
+cron.schedule('* * * * *', async () => {
+  const db = require('./db');
+  const ScanService = require('./services/scanner');
+  try {
+    // Start pending scans whose scheduled_at has arrived
+    const due = await db.query(`
+      SELECT * FROM scan_jobs
+      WHERE status='pending'
+        AND scan_options->>'scheduled_at' IS NOT NULL
+        AND (scan_options->>'scheduled_at')::timestamptz <= NOW()
+    `);
+    for (const job of due.rows) {
+      const opts = job.scan_options || {};
+      ScanService.runScan(job.target, job.id, { scan_type: job.scan_type, nmapArgs: opts.nmapArgs || '' })
+        .catch(e => logger.error('Scheduled scan error:', e.message));
+    }
+    // Cancel running scans past their stop_at time
+    const toStop = await db.query(`
+      SELECT id FROM scan_jobs
+      WHERE status='running'
+        AND scan_options->>'stop_at' IS NOT NULL
+        AND (scan_options->>'stop_at')::timestamptz <= NOW()
+    `);
+    for (const job of toStop.rows) {
+      await db.query(`UPDATE scan_jobs SET status='cancelled', completed_at=NOW() WHERE id=$1`, [job.id]);
+      logger.info(`Auto-stopped scan ${job.id} (stop_at reached)`);
+    }
+  } catch (e) { logger.error('Scheduler error:', e.message); }
+});
+
+// ── Scheduled reports runner (hourly check) ───────────────────
+cron.schedule('0 * * * *', async () => {
+  const db2 = require('./db');
+  try {
+    const due = await db2.query(`
+      SELECT * FROM scheduled_reports
+      WHERE is_active=TRUE AND next_run <= NOW()
+    `);
+    for (const sr of due.rows) {
+      logger.info(`Running scheduled report: ${sr.name} (${sr.report_type})`);
+      // Compute and update next_run
+      const now = new Date();
+      let nextRun;
+      if (sr.schedule === 'daily')   { nextRun = new Date(now.getTime() + 86400000); }
+      else if (sr.schedule === 'weekly') { nextRun = new Date(now.getTime() + 7*86400000); }
+      else { nextRun = new Date(now.getFullYear(), now.getMonth()+1, 1, 6, 0, 0); }
+      await db2.query(
+        `UPDATE scheduled_reports SET last_run=NOW(), next_run=$2 WHERE id=$1`,
+        [sr.id, nextRun]
+      );
+    }
+  } catch (e) { logger.error('Scheduled reports error:', e.message); }
 });
 
 // ── Scheduled scans (daily at 02:00) ──────────────────────────

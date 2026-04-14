@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, LineChart, Line } from 'recharts';
+import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, LineChart, Line, AreaChart, Area } from 'recharts';
 import { api } from '../App';
 import { format } from 'date-fns';
 
@@ -7,12 +7,12 @@ const fmt$ = n => '$' + (n >= 1000000 ? (n/1000000).toFixed(1)+'M' : n >= 1000 ?
 const SEV_COLORS = { critical: '#f85149', high: '#f0883e', medium: '#e3b341', low: '#3fb950' };
 
 export default function Dashboard() {
-  const [data, setData] = useState(null);
+  const [data,    setData]    = useState(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     api.get('/dashboard').then(r => { setData(r.data); setLoading(false); }).catch(console.error);
-    const t = setInterval(() => api.get('/dashboard').then(r => setData(r.data)), 30000);
+    const t = setInterval(() => api.get('/dashboard').then(r => setData(r.data)).catch(() => {}), 30000);
     return () => clearInterval(t);
   }, []);
 
@@ -21,6 +21,7 @@ export default function Dashboard() {
 
   const vulnBySev = Object.entries(data.open_vulns_by_severity||{}).map(([k,v]) => ({ name: k.charAt(0).toUpperCase()+k.slice(1), value: v, fill: SEV_COLORS[k] }));
   const riskData  = Object.entries(data.risks||{}).map(([k,v]) => ({ name: k.charAt(0).toUpperCase()+k.slice(1), value: v }));
+
   const trendMap = {};
   (data.vuln_trend||[]).forEach(r => {
     const d = format(new Date(r.day),'MMM dd');
@@ -29,7 +30,17 @@ export default function Dashboard() {
   });
   const trendData = Object.values(trendMap).slice(-14);
 
+  const riskTrendMap = {};
+  (data.risk_trend||[]).forEach(r => {
+    const w = format(new Date(r.week),'MMM dd');
+    if (!riskTrendMap[w]) riskTrendMap[w] = { week: w, critical: 0, high: 0, medium: 0, low: 0 };
+    riskTrendMap[w][r.risk_level] = parseInt(r.cnt);
+  });
+  const riskTrendData = Object.values(riskTrendMap);
+
   const aleClass = data.total_ale >= 500000 ? 'ale-high' : data.total_ale >= 100000 ? 'ale-med' : 'ale-low';
+  const sla = data.sla || {};
+  const critColor = { critical: 'var(--critical)', high: 'var(--high)', medium: 'var(--medium)', low: 'var(--low)' };
 
   return (
     <div>
@@ -69,13 +80,40 @@ export default function Dashboard() {
         </div>
       </div>
 
+      {/* SLA row */}
+      <div className="stat-grid" style={{ gridTemplateColumns: 'repeat(4, 1fr)', marginBottom: 20 }}>
+        <div className="stat-card" style={{ borderLeft: '3px solid var(--critical)' }}>
+          <div className="stat-label">Overdue Vulns</div>
+          <div className="stat-value" style={{ color: parseInt(sla.overdue) > 0 ? 'var(--critical)' : 'var(--low)', fontSize: 28 }}>
+            {sla.overdue || 0}
+          </div>
+          <div className="stat-sub">Past due date</div>
+        </div>
+        <div className="stat-card" style={{ borderLeft: '3px solid var(--medium)' }}>
+          <div className="stat-label">Avg Days Open</div>
+          <div className="stat-value" style={{ fontSize: 28 }}>{sla.avg_days_open || 0}</div>
+          <div className="stat-sub">Open vulnerabilities</div>
+        </div>
+        <div className="stat-card" style={{ borderLeft: '3px solid var(--low)' }}>
+          <div className="stat-label">Resolved</div>
+          <div className="stat-value" style={{ color: 'var(--low)', fontSize: 28 }}>{sla.resolved || 0}</div>
+          <div className="stat-sub">Total remediated</div>
+        </div>
+        <div className="stat-card" style={{ borderLeft: '3px solid var(--info)' }}>
+          <div className="stat-label">Avg Days to Resolve</div>
+          <div className="stat-value" style={{ fontSize: 28 }}>{sla.avg_days_to_resolve || 0}</div>
+          <div className="stat-sub">Mean time to remediate</div>
+        </div>
+      </div>
+
+      {/* Charts row 1 */}
       <div style={{display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:16, marginBottom:20}}>
-        {/* Vuln by severity */}
         <div className="card">
           <div className="card-title">Open Vulnerabilities by Severity</div>
           <ResponsiveContainer width="100%" height={180}>
             <PieChart>
-              <Pie data={vulnBySev} cx="50%" cy="50%" innerRadius={45} outerRadius={75} dataKey="value" label={({name,value}) => value > 0 ? `${name}: ${value}` : ''} labelLine={false} fontSize={11}>
+              <Pie data={vulnBySev} cx="50%" cy="50%" innerRadius={45} outerRadius={75} dataKey="value"
+                label={({name,value}) => value > 0 ? `${name}: ${value}` : ''} labelLine={false} fontSize={11}>
                 {vulnBySev.map((e,i) => <Cell key={i} fill={e.fill} />)}
               </Pie>
               <Tooltip formatter={(v,n) => [v, n]} contentStyle={{background:'var(--bg2)',border:'1px solid var(--border)',fontSize:12}} />
@@ -83,7 +121,6 @@ export default function Dashboard() {
           </ResponsiveContainer>
         </div>
 
-        {/* Risk register */}
         <div className="card">
           <div className="card-title">Risk Register Distribution</div>
           <ResponsiveContainer width="100%" height={180}>
@@ -98,7 +135,6 @@ export default function Dashboard() {
           </ResponsiveContainer>
         </div>
 
-        {/* 14-day trend */}
         <div className="card">
           <div className="card-title">Vulnerability Trend (14 days)</div>
           <ResponsiveContainer width="100%" height={180}>
@@ -111,6 +147,56 @@ export default function Dashboard() {
               ))}
             </LineChart>
           </ResponsiveContainer>
+        </div>
+      </div>
+
+      {/* Charts row 2 */}
+      <div style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:16, marginBottom:20}}>
+        {/* Risk trend */}
+        <div className="card">
+          <div className="card-title">Risk Register Trend (8 weeks)</div>
+          {riskTrendData.length === 0 ? (
+            <div className="empty-state" style={{ height: 160 }}><p>No risk trend data yet</p></div>
+          ) : (
+            <ResponsiveContainer width="100%" height={180}>
+              <AreaChart data={riskTrendData} margin={{top:5,bottom:0}}>
+                <XAxis dataKey="week" tick={{fontSize:10,fill:'var(--text3)'}} axisLine={false} tickLine={false} />
+                <YAxis tick={{fontSize:11,fill:'var(--text2)'}} axisLine={false} tickLine={false} />
+                <Tooltip contentStyle={{background:'var(--bg2)',border:'1px solid var(--border)',fontSize:12}} />
+                {['critical','high','medium','low'].map(s => (
+                  <Area key={s} type="monotone" dataKey={s} stackId="1" stroke={SEV_COLORS[s]} fill={SEV_COLORS[s]} fillOpacity={0.3} dot={false} />
+                ))}
+              </AreaChart>
+            </ResponsiveContainer>
+          )}
+        </div>
+
+        {/* Asset risk heatmap */}
+        <div className="card">
+          <div className="card-title">Top Risk Assets</div>
+          {!data.top_risk_assets?.length ? (
+            <div className="empty-state" style={{ height: 160 }}><p>No critical/high findings yet</p></div>
+          ) : (
+            <table style={{ fontSize: 12 }}>
+              <thead><tr><th>Asset</th><th>Critical</th><th>High</th><th>ALE</th></tr></thead>
+              <tbody>
+                {data.top_risk_assets.map(a => (
+                  <tr key={a.id}>
+                    <td>
+                      <span className="mono" style={{ color: 'var(--info)' }}>{a.ip_address}</span>
+                      {a.hostname && <span style={{ color: 'var(--text3)', marginLeft: 6, fontSize: 11 }}>{a.hostname}</span>}
+                      <div><span style={{ color: critColor[a.criticality], fontSize: 10, fontWeight: 600 }}>{a.criticality}</span></div>
+                    </td>
+                    <td><span style={{ color: 'var(--critical)', fontWeight: 700 }}>{a.critical_count || 0}</span></td>
+                    <td><span style={{ color: 'var(--high)',     fontWeight: 600 }}>{a.high_count    || 0}</span></td>
+                    <td className={`ale-value ${a.total_ale > 50000 ? 'ale-high' : a.total_ale > 10000 ? 'ale-med' : 'ale-low'}`}>
+                      {fmt$(a.total_ale)}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
         </div>
       </div>
 

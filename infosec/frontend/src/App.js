@@ -1,18 +1,37 @@
-import React, { useState, useEffect, createContext, useContext } from 'react';
+import React, { useState, useEffect, createContext, useContext, useRef } from 'react';
 import { BrowserRouter, Routes, Route, Navigate, Link, useLocation, useNavigate } from 'react-router-dom';
 import axios from 'axios';
-import Dashboard from './pages/Dashboard';
-import Assets from './pages/Assets';
-import Scans from './pages/Scans';
+import Dashboard      from './pages/Dashboard';
+import Assets         from './pages/Assets';
+import Scans          from './pages/Scans';
 import Vulnerabilities from './pages/Vulnerabilities';
-import Risks from './pages/Risks';
-import Reports from './pages/Reports';
-import Users from './pages/Users';
-import Groups from './pages/Groups';
-import Login from './pages/Login';
+import Risks          from './pages/Risks';
+import Reports        from './pages/Reports';
+import Users          from './pages/Users';
+import Groups         from './pages/Groups';
+import Login          from './pages/Login';
+import AuditLog       from './pages/AuditLog';
+import Compliance     from './pages/Compliance';
+import ApiKeys        from './pages/ApiKeys';
+import Settings       from './pages/Settings';
 import './App.css';
 
 export const AuthContext = createContext(null);
+
+const THEMES = [
+  { id: 'warm-dark', label: 'Warm Dark',  color: '#2e2720' },
+  { id: 'pure-dark', label: 'Pure Dark',  color: '#161b22' },
+  { id: 'ocean',     label: 'Ocean',      color: '#0d1830' },
+  { id: 'slate',     label: 'Slate',      color: '#222538' },
+  { id: 'light',     label: 'Light',      color: '#ffffff' },
+];
+
+function useTheme() {
+  const [theme, setThemeState] = useState(() => localStorage.getItem('theme') || 'warm-dark');
+  const setTheme = t => { setThemeState(t); localStorage.setItem('theme', t); document.documentElement.setAttribute('data-theme', t); };
+  useEffect(() => { document.documentElement.setAttribute('data-theme', theme); }, [theme]);
+  return [theme, setTheme];
+}
 
 const api = axios.create({ baseURL: '/api' });
 api.interceptors.request.use(cfg => {
@@ -58,19 +77,177 @@ const NAV = [
   { path: '/vulnerabilities',label: 'Vulnerabilities',icon: '⚠',  roles: ['admin','analyst','viewer','auditor'] },
   { path: '/risks',         label: 'Risk Register',   icon: '📋', roles: ['admin','analyst','viewer','auditor'] },
   { path: '/reports',       label: 'Reports',         icon: '📊', roles: ['admin','analyst','auditor'] },
+  { path: '/compliance',    label: 'Compliance',      icon: '✅', roles: ['admin','analyst','auditor'] },
   { path: '/users',         label: 'Users',           icon: '👤', roles: ['admin'] },
-  { path: '/groups',        label: 'Groups',          icon: '👥', roles: ['admin','analyst','auditor','viewer'] },
+  { path: '/groups/users',  label: 'User Groups',     icon: '👥', roles: ['admin','analyst','auditor','viewer'] },
+  { path: '/groups/assets', label: 'Asset Groups',    icon: '🖥', roles: ['admin','analyst','auditor','viewer'] },
+  { path: '/audit',         label: 'Audit Log',       icon: '📜', roles: ['admin','auditor'] },
+  { path: '/apikeys',       label: 'API Keys',        icon: '🔑', roles: ['admin','analyst'] },
+  { path: '/settings',      label: 'Settings',        icon: '⚙️', roles: ['admin'] },
 ];
+
+function ChangePasswordModal({ onClose }) {
+  const [form, setForm] = useState({ current: '', newPassword: '', confirm: '' });
+  const [err, setErr]   = useState('');
+  const [ok, setOk]     = useState(false);
+  const set = k => e => setForm(p => ({ ...p, [k]: e.target.value }));
+
+  const submit = async e => {
+    e.preventDefault(); setErr('');
+    if (form.newPassword !== form.confirm) return setErr('New passwords do not match');
+    try {
+      await api.post('/auth/change-password', { current: form.current, newPassword: form.newPassword });
+      setOk(true);
+    } catch (ex) { setErr(ex.response?.data?.error || 'Error'); }
+  };
+
+  return (
+    <div className="modal-overlay" onClick={e => e.target === e.currentTarget && onClose()}>
+      <div className="modal">
+        <div className="modal-header">
+          <h2>Change Password</h2>
+          <button className="modal-close" onClick={onClose}>✕</button>
+        </div>
+        {ok ? (
+          <div className="modal-body">
+            <div className="alert alert-success">Password updated successfully.</div>
+            <div className="modal-footer" style={{ padding: '0 0 4px' }}>
+              <button className="btn btn-primary" onClick={onClose}>Close</button>
+            </div>
+          </div>
+        ) : (
+          <form onSubmit={submit}>
+            <div className="modal-body">
+              {err && <div className="alert alert-error">{err}</div>}
+              <div className="form-group"><label>Current Password</label><input type="password" value={form.current} onChange={set('current')} required /></div>
+              <div className="form-group"><label>New Password</label><input type="password" value={form.newPassword} onChange={set('newPassword')} required minLength={8} /></div>
+              <div className="form-group"><label>Confirm New Password</label><input type="password" value={form.confirm} onChange={set('confirm')} required minLength={8} /></div>
+            </div>
+            <div className="modal-footer">
+              <button type="button" className="btn btn-secondary" onClick={onClose}>Cancel</button>
+              <button type="submit" className="btn btn-primary">Update Password</button>
+            </div>
+          </form>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function NotificationBell() {
+  const [data,    setData]    = useState({ unread: 0, items: [] });
+  const [open,    setOpen]    = useState(false);
+  const ref = useRef(null);
+
+  const load = () => api.get('/notifications').then(r => setData(r.data)).catch(() => {});
+
+  useEffect(() => {
+    load();
+    const t = setInterval(load, 30000);
+    return () => clearInterval(t);
+  }, []);
+
+  useEffect(() => {
+    const handler = e => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
+
+  const markRead = async id => {
+    await api.patch(`/notifications/${id}/read`).catch(() => {});
+    load();
+  };
+
+  const markAllRead = async () => {
+    await api.post('/notifications/read-all').catch(() => {});
+    load();
+  };
+
+  const dismiss = async (e, id) => {
+    e.stopPropagation();
+    await api.delete(`/notifications/${id}`).catch(() => {});
+    load();
+  };
+
+  const typeColor = t => ({
+    critical: 'var(--critical)', warning: 'var(--high)', success: 'var(--low)', info: 'var(--info)'
+  }[t] || 'var(--text2)');
+
+  return (
+    <div ref={ref} style={{ position: 'relative' }}>
+      <button onClick={() => setOpen(o => !o)}
+        style={{ position: 'relative', background: 'none', border: 'none', cursor: 'pointer',
+                 fontSize: 18, color: 'var(--text2)', padding: '4px 6px', borderRadius: 'var(--radius)',
+                 transition: 'background 0.15s' }}
+        title="Notifications">
+        🔔
+        {data.unread > 0 && (
+          <span style={{
+            position: 'absolute', top: 0, right: 0, background: 'var(--critical)',
+            color: '#fff', borderRadius: '50%', width: 16, height: 16,
+            fontSize: 10, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700
+          }}>{data.unread > 9 ? '9+' : data.unread}</span>
+        )}
+      </button>
+
+      {open && (
+        <div style={{
+          position: 'absolute', right: 0, top: '110%', width: 340, maxHeight: 420,
+          background: 'var(--bg2)', border: '1px solid var(--border2)', borderRadius: 'var(--radius)',
+          boxShadow: '0 8px 32px rgba(0,0,0,0.4)', zIndex: 1000, overflow: 'hidden',
+          display: 'flex', flexDirection: 'column',
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                        padding: '10px 14px', borderBottom: '1px solid var(--border)' }}>
+            <div style={{ fontWeight: 600, fontSize: 13 }}>Notifications</div>
+            {data.unread > 0 && (
+              <button onClick={markAllRead} style={{ fontSize: 11, color: 'var(--accent-h)', background: 'none', border: 'none', cursor: 'pointer' }}>
+                Mark all read
+              </button>
+            )}
+          </div>
+          <div style={{ overflowY: 'auto', flex: 1 }}>
+            {data.items.length === 0 ? (
+              <div style={{ padding: '24px 0', textAlign: 'center', color: 'var(--text3)', fontSize: 13 }}>
+                No notifications
+              </div>
+            ) : data.items.map(n => (
+              <div key={n.id} onClick={() => markRead(n.id)}
+                style={{ padding: '10px 14px', borderBottom: '1px solid var(--border)',
+                         background: n.is_read ? 'transparent' : 'rgba(31,111,235,0.06)',
+                         cursor: 'pointer', display: 'flex', gap: 10, alignItems: 'flex-start' }}>
+                <div style={{ width: 4, minWidth: 4, height: '100%', borderRadius: 2,
+                               background: n.is_read ? 'transparent' : typeColor(n.type), marginTop: 3 }} />
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontWeight: n.is_read ? 400 : 600, fontSize: 12, marginBottom: 2 }}>{n.title}</div>
+                  {n.message && <div style={{ fontSize: 11, color: 'var(--text2)', lineHeight: 1.4 }}>{n.message}</div>}
+                  <div style={{ fontSize: 10, color: 'var(--text3)', marginTop: 4 }}>
+                    {new Date(n.created_at).toLocaleString()}
+                  </div>
+                </div>
+                <button onClick={e => dismiss(e, n.id)} style={{ background: 'none', border: 'none', cursor: 'pointer',
+                  color: 'var(--text3)', fontSize: 14, flexShrink: 0 }}>✕</button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
 
 function Sidebar() {
   const { user, logout } = useContext(AuthContext);
   const loc = useLocation();
+  const [changePwd, setChangePwd] = useState(false);
+  const [theme, setTheme] = useTheme();
   const visible = NAV.filter(n => n.roles.includes(user?.role));
   return (
     <aside className="sidebar">
       <div className="sidebar-brand">
         <div className="brand-icon">🛡</div>
         <div><div className="brand-name">SecureOps</div><div className="brand-sub">Risk Platform</div></div>
+        <div style={{ marginLeft: 'auto' }}><NotificationBell /></div>
       </div>
       <nav className="sidebar-nav">
         {visible.map(n => (
@@ -84,8 +261,19 @@ function Sidebar() {
           <div className="user-avatar">{user?.username?.[0]?.toUpperCase()}</div>
           <div><div className="user-name">{user?.username}</div><div className="user-role">{user?.role}</div></div>
         </div>
+        <div style={{ marginBottom: 8 }}>
+          <div style={{ fontSize: 10, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 5 }}>Theme</div>
+          <div style={{ display: 'flex', gap: 5 }}>
+            {THEMES.map(t => (
+              <button key={t.id} title={t.label} onClick={() => setTheme(t.id)}
+                style={{ width: 18, height: 18, borderRadius: '50%', background: t.color, border: theme === t.id ? '2px solid var(--accent-h)' : '2px solid var(--border2)', cursor: 'pointer', padding: 0, flexShrink: 0 }} />
+            ))}
+          </div>
+        </div>
+        <button className="logout-btn" onClick={() => setChangePwd(true)} style={{ marginBottom: 6 }}>Change Password</button>
         <button className="logout-btn" onClick={logout}>Sign out</button>
       </div>
+      {changePwd && <ChangePasswordModal onClose={() => setChangePwd(false)} />}
     </aside>
   );
 }
@@ -118,8 +306,13 @@ export default function App() {
           <Route path="/vulnerabilities" element={<PrivateRoute><Vulnerabilities /></PrivateRoute>} />
           <Route path="/risks" element={<PrivateRoute><Risks /></PrivateRoute>} />
           <Route path="/reports" element={<PrivateRoute><Reports /></PrivateRoute>} />
+          <Route path="/compliance" element={<PrivateRoute roles={['admin','analyst','auditor']}><Compliance /></PrivateRoute>} />
           <Route path="/users" element={<PrivateRoute roles={['admin']}><Users /></PrivateRoute>} />
-          <Route path="/groups" element={<PrivateRoute><Groups /></PrivateRoute>} />
+          <Route path="/groups/users"  element={<PrivateRoute><Groups defaultTab="users"  /></PrivateRoute>} />
+          <Route path="/groups/assets" element={<PrivateRoute><Groups defaultTab="assets" /></PrivateRoute>} />
+          <Route path="/audit" element={<PrivateRoute roles={['admin','auditor']}><AuditLog /></PrivateRoute>} />
+          <Route path="/apikeys" element={<PrivateRoute roles={['admin','analyst']}><ApiKeys /></PrivateRoute>} />
+          <Route path="/settings" element={<PrivateRoute roles={['admin']}><Settings /></PrivateRoute>} />
         </Routes>
       </BrowserRouter>
     </AuthProvider>
