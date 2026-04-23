@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback, useContext } from 'react';
 import { api, AuthContext } from '../App';
 import { format, differenceInDays } from 'date-fns';
+import { RequestApprovalModal } from './Approvals';
 
 const SEVS    = ['critical','high','medium','low','informational'];
 const STATUSES = ['open','in_progress','mitigated','accepted','false_positive','closed'];
@@ -69,6 +70,237 @@ function VulnComments({ vulnId }) {
   );
 }
 
+/* ─── CVE Panel ───────────────────────────────────────── */
+const CVSS_COLOR = score =>
+  score >= 9.0 ? '#ef4444' :
+  score >= 7.0 ? '#f97316' :
+  score >= 4.0 ? '#eab308' : '#22c55e';
+
+const CVSS_LABEL = score =>
+  score >= 9.0 ? 'Critical' :
+  score >= 7.0 ? 'High' :
+  score >= 4.0 ? 'Medium' : 'Low';
+
+function CVEPanel({ cveId }) {
+  const [cve,     setCve]     = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [error,   setError]   = useState('');
+
+  // Auto-load if we already have this CVE cached
+  useEffect(() => {
+    if (!cveId) return;
+    setLoading(true); setError('');
+    api.get(`/cve/${encodeURIComponent(cveId)}`)
+      .then(r  => setCve(r.data))
+      .catch(() => setCve(null))   // silently ignore — user can retry
+      .finally(() => setLoading(false));
+  }, [cveId]);
+
+  const fetch = () => {
+    setLoading(true); setError(''); setCve(null);
+    api.get(`/cve/${encodeURIComponent(cveId)}`)
+      .then(r => setCve(r.data))
+      .catch(e => setError(e.response?.data?.error || 'NVD lookup failed'))
+      .finally(() => setLoading(false));
+  };
+
+  if (!cveId) return null;
+
+  const patchRefs  = cve?.references?.filter(r => r.tags?.includes('Patch'))            || [];
+  const vendorRefs = cve?.references?.filter(r => r.tags?.includes('Vendor Advisory'))  || [];
+  const otherRefs  = cve?.references?.filter(r => !r.tags?.includes('Patch') && !r.tags?.includes('Vendor Advisory')) || [];
+
+  return (
+    <div style={{ border: '1px solid var(--border)', borderRadius: 'var(--radius)', overflow: 'hidden' }}>
+      {/* Header */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                    background: 'var(--bg3)', padding: '10px 14px', borderBottom: '1px solid var(--border)' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <span style={{ fontWeight: 700, fontSize: 13, color: 'var(--info)' }}>{cveId}</span>
+          {cve && <span style={{ fontSize: 11, color: 'var(--text3)' }}>· {cve.cached ? 'cached' : 'live from NVD'}</span>}
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          {cve && (
+            <a
+              href={`https://nvd.nist.gov/vuln/detail/${cveId}`}
+              target="_blank" rel="noopener noreferrer"
+              style={{ fontSize: 11, color: 'var(--info)' }}
+            >View on NVD ↗</a>
+          )}
+          <button className="btn btn-secondary btn-sm" onClick={fetch} disabled={loading}>
+            {loading ? 'Loading…' : cve ? '↺ Refresh' : '↓ Fetch CVE Data'}
+          </button>
+        </div>
+      </div>
+
+      {/* Error */}
+      {error && (
+        <div style={{ padding: '10px 14px', color: 'var(--critical)', fontSize: 12 }}>{error}</div>
+      )}
+
+      {/* Placeholder */}
+      {!cve && !loading && !error && (
+        <div style={{ padding: '12px 14px', fontSize: 12, color: 'var(--text3)' }}>
+          Click "Fetch CVE Data" to load live details from the NIST National Vulnerability Database.
+        </div>
+      )}
+
+      {/* CVE Data */}
+      {cve && (
+        <div style={{ padding: '14px' }}>
+          {/* CVSS score + description row */}
+          <div style={{ display: 'flex', gap: 16, alignItems: 'flex-start', marginBottom: 14 }}>
+            {/* Score circle */}
+            {cve.cvss_score != null && (
+              <div style={{ flexShrink: 0, textAlign: 'center' }}>
+                <div style={{
+                  width: 64, height: 64, borderRadius: '50%',
+                  background: CVSS_COLOR(cve.cvss_score),
+                  display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+                  color: '#fff', fontWeight: 700,
+                }}>
+                  <div style={{ fontSize: 20, lineHeight: 1 }}>{cve.cvss_score.toFixed(1)}</div>
+                  <div style={{ fontSize: 9, marginTop: 2, opacity: 0.9 }}>CVSS {cve.cvss_version}</div>
+                </div>
+                <div style={{ fontSize: 11, fontWeight: 600, marginTop: 4, color: CVSS_COLOR(cve.cvss_score) }}>
+                  {CVSS_LABEL(cve.cvss_score)}
+                </div>
+              </div>
+            )}
+
+            <div style={{ flex: 1, fontSize: 12, color: 'var(--text)', lineHeight: 1.6 }}>
+              {cve.description || <span style={{ color: 'var(--text3)' }}>No description available.</span>}
+            </div>
+          </div>
+
+          {/* CVSS vector */}
+          {cve.cvss_vector && (
+            <div style={{ marginBottom: 10, fontFamily: 'monospace', fontSize: 11,
+                          background: 'var(--bg3)', padding: '6px 10px', borderRadius: 4,
+                          color: 'var(--text2)', wordBreak: 'break-all' }}>
+              {cve.cvss_vector}
+            </div>
+          )}
+
+          {/* CWE IDs */}
+          {cve.cwe_ids?.length > 0 && (
+            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 12, alignItems: 'center' }}>
+              <span style={{ fontSize: 11, color: 'var(--text3)' }}>CWE:</span>
+              {cve.cwe_ids.map(c => (
+                <span key={c} style={{ fontSize: 11, fontWeight: 600, padding: '1px 7px',
+                                       background: 'var(--bg3)', border: '1px solid var(--border)',
+                                       borderRadius: 4, color: 'var(--text2)' }}>{c}</span>
+              ))}
+            </div>
+          )}
+
+          {/* Dates */}
+          <div style={{ fontSize: 11, color: 'var(--text3)', marginBottom: 12 }}>
+            {cve.published     && <span>Published: {new Date(cve.published).toLocaleDateString()} · </span>}
+            {cve.last_modified && <span>Updated: {new Date(cve.last_modified).toLocaleDateString()}</span>}
+          </div>
+
+          {/* References */}
+          {(patchRefs.length > 0 || vendorRefs.length > 0 || otherRefs.length > 0) && (
+            <div>
+              <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--text3)', marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.05em' }}>References</div>
+              {[
+                { label: 'Patches', items: patchRefs,  color: 'var(--low)' },
+                { label: 'Vendor Advisories', items: vendorRefs, color: 'var(--info)' },
+                { label: 'Other', items: otherRefs,    color: 'var(--text3)' },
+              ].map(({ label, items, color }) => items.length > 0 && (
+                <div key={label} style={{ marginBottom: 8 }}>
+                  <div style={{ fontSize: 10, color, fontWeight: 600, marginBottom: 3 }}>{label}</div>
+                  {items.slice(0, 5).map((r, i) => (
+                    <div key={i} style={{ fontSize: 11, marginBottom: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      <a href={r.url} target="_blank" rel="noopener noreferrer"
+                         style={{ color: 'var(--info)' }}>
+                        {r.url.replace(/^https?:\/\//, '')}
+                      </a>
+                    </div>
+                  ))}
+                  {items.length > 5 && <div style={{ fontSize: 11, color: 'var(--text3)' }}>+{items.length - 5} more</div>}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ApprovalWorkflow({ vuln }) {
+  const { user } = useContext(AuthContext);
+  const [approvals, setApprovals] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [requestModal, setRequestModal] = useState(false);
+
+  const load = () => {
+    api.get('/approvals').then(r => {
+      setApprovals(r.data.filter(a => a.vuln_id === vuln.id));
+    }).catch(() => {}).finally(() => setLoading(false));
+  };
+
+  useEffect(() => { load(); }, [vuln.id]);
+
+  const statusColor = s => ({ pending: 'var(--medium)', approved: 'var(--low)', rejected: 'var(--critical)' }[s] || 'var(--text3)');
+  const actionLabel = a => ({ accept_risk: 'Accept Risk', close: 'Close (Resolved)', mitigate: 'Mitigate' }[a] || a);
+
+  const showWorkflow = ['open','in_progress'].includes(vuln.status);
+
+  if (!showWorkflow) return null;
+
+  return (
+    <div style={{ borderTop: '1px solid var(--border)', paddingTop: 14 }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+        <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+          Approval Workflow
+        </div>
+        <button className="btn btn-secondary btn-sm" onClick={() => setRequestModal(true)}>
+          + Request Approval
+        </button>
+      </div>
+
+      {loading ? (
+        <div className="spinner" style={{ margin: '8px auto', width: 20, height: 20 }} />
+      ) : approvals.length === 0 ? (
+        <div style={{ fontSize: 12, color: 'var(--text3)' }}>No approval requests for this vulnerability.</div>
+      ) : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+          {approvals.map(a => (
+            <div key={a.id} style={{ padding: '8px 10px', background: 'var(--bg3)', borderRadius: 'var(--radius)', borderLeft: `3px solid ${statusColor(a.status)}` }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 3 }}>
+                <span style={{ fontSize: 12, fontWeight: 600 }}>{actionLabel(a.action)}</span>
+                <span style={{ fontSize: 11, padding: '1px 6px', borderRadius: 3, background: statusColor(a.status), color: '#fff', fontWeight: 600 }}>
+                  {a.status}
+                </span>
+                {a.approved_by_name && (
+                  <span style={{ fontSize: 11, color: 'var(--text3)' }}>by {a.approved_by_name}</span>
+                )}
+              </div>
+              {a.request_notes && (
+                <div style={{ fontSize: 11, color: 'var(--text2)', marginBottom: 2 }}>{a.request_notes}</div>
+              )}
+              {a.review_notes && (
+                <div style={{ fontSize: 11, color: 'var(--text3)' }}>Review: {a.review_notes}</div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {requestModal && (
+        <RequestApprovalModal
+          vulnId={vuln.id}
+          onClose={() => setRequestModal(false)}
+          onSubmitted={() => { setRequestModal(false); load(); }}
+        />
+      )}
+    </div>
+  );
+}
+
 function VulnDetail({ vuln, onClose, onUpdated }) {
   const { user }  = useContext(AuthContext);
   const [status,  setStatus]  = useState(vuln.status);
@@ -118,6 +350,9 @@ function VulnDetail({ vuln, onClose, onUpdated }) {
             <div style={{fontWeight:600,fontSize:15,marginBottom:6}}>{vuln.title}</div>
             <div style={{fontSize:13,color:'var(--text2)',lineHeight:1.6}}>{vuln.description}</div>
           </div>
+
+          {/* CVE Panel */}
+          {vuln.cve_id && <CVEPanel cveId={vuln.cve_id} />}
 
           {/* Evidence */}
           {vuln.evidence && (
@@ -191,6 +426,9 @@ function VulnDetail({ vuln, onClose, onUpdated }) {
           <div style={{ borderTop: '1px solid var(--border)', paddingTop: 14 }}>
             <VulnComments vulnId={vuln.id} />
           </div>
+
+          {/* Approval Workflow */}
+          <ApprovalWorkflow vuln={vuln} />
         </div>
         <div className="modal-footer">
           <button className="btn btn-secondary" onClick={onClose}>Close</button>
@@ -266,15 +504,17 @@ function AddVulnModal({ onClose, onSaved }) {
 }
 
 export default function Vulnerabilities() {
-  const [vulns,    setVulns]    = useState([]);
-  const [total,    setTotal]    = useState(0);
-  const [page,     setPage]     = useState(1);
-  const [search,   setSearch]   = useState('');
-  const [severity, setSev]      = useState('');
-  const [status,   setStatus]   = useState('open');
-  const [selected, setSelected] = useState(null);
-  const [addModal, setAddModal] = useState(false);
-  const [loading,  setLoading]  = useState(true);
+  const [vulns,      setVulns]      = useState([]);
+  const [total,      setTotal]      = useState(0);
+  const [page,       setPage]       = useState(1);
+  const [search,     setSearch]     = useState('');
+  const [severity,   setSev]        = useState('');
+  const [status,     setStatus]     = useState('open');
+  const [selected,   setSelected]   = useState(null);
+  const [addModal,   setAddModal]   = useState(false);
+  const [loading,    setLoading]    = useState(true);
+  const [enriching,  setEnriching]  = useState(false);
+  const [enrichResult, setEnrichResult] = useState(null);
 
   const load = useCallback(() => {
     setLoading(true);
@@ -289,7 +529,30 @@ export default function Vulnerabilities() {
     <div>
       <div className="page-header">
         <div><div className="page-title">Vulnerabilities</div><div className="page-subtitle">{total} findings</div></div>
-        <button className="btn btn-primary" onClick={() => setAddModal(true)}>+ Add Vulnerability</button>
+        <div style={{ display:'flex', gap:8, alignItems:'center' }}>
+          {enrichResult && (
+            <span style={{ fontSize:12, color:'var(--low)' }}>
+              ✓ Enriched {enrichResult.enriched}/{enrichResult.total} CVEs
+            </span>
+          )}
+          <button
+            className="btn btn-secondary"
+            disabled={enriching}
+            title="Fetch CVSS scores from NVD for all vulnerabilities that have a CVE ID"
+            onClick={async () => {
+              setEnriching(true); setEnrichResult(null);
+              try {
+                const r = await api.post('/cve/enrich-all');
+                setEnrichResult(r.data);
+                load();
+              } catch(e) { alert('Enrichment failed: ' + (e.response?.data?.error || e.message)); }
+              finally { setEnriching(false); }
+            }}
+          >
+            {enriching ? 'Enriching…' : '⬇ Enrich CVEs'}
+          </button>
+          <button className="btn btn-primary" onClick={() => setAddModal(true)}>+ Add Vulnerability</button>
+        </div>
       </div>
 
       <div className="filter-bar">

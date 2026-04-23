@@ -2,6 +2,7 @@
 const router = require('express').Router();
 const db = require('../db');
 const { auth, requireRole } = require('../middleware/auth');
+const mailer = require('../services/mailer');
 
 router.get('/', auth, async (req, res) => {
   const { page=1, limit=50, severity, status, asset_id, search } = req.query;
@@ -80,7 +81,7 @@ router.post('/:id/comments', auth, requireRole('admin','analyst'), async (req, r
 
 // Manual vuln creation
 router.post('/', auth, requireRole('admin','analyst'), async (req, res) => {
-  const { asset_id, title, description, severity, cve_id, cvss_score, vuln_type, remediation, asset_value, exposure_factor, aro } = req.body;
+  const { asset_id, title, description, severity, cve_id, cvss_score, vuln_type, remediation, asset_value, exposure_factor, aro, due_date } = req.body;
   if (!asset_id || !title || !severity) return res.status(400).json({ error: 'asset_id, title, severity required' });
   try {
     const risk_level = severity === 'informational' ? 'low' : severity;
@@ -88,7 +89,40 @@ router.post('/', auth, requireRole('admin','analyst'), async (req, res) => {
       INSERT INTO vulnerabilities (asset_id,title,description,severity,risk_level,cve_id,cvss_score,vuln_type,remediation,asset_value,exposure_factor,aro,detected_by)
       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,'manual') RETURNING *
     `, [asset_id,title,description,severity,risk_level,cve_id,cvss_score||null,vuln_type||'Manual',remediation,asset_value||50000,exposure_factor||30,aro||0.25]);
-    res.status(201).json(r.rows[0]);
+
+    const vuln = r.rows[0];
+
+    // Auto-apply SLA due date if not provided
+    if (!due_date) {
+      try {
+        const slaPol = await db.query('SELECT days_to_remediate FROM sla_policies WHERE severity=$1', [severity]);
+        if (slaPol.rows.length) {
+          const days = slaPol.rows[0].days_to_remediate;
+          await db.query(
+            `UPDATE vulnerabilities SET due_date = NOW() + INTERVAL '${parseInt(days)} days' WHERE id=$1`,
+            [vuln.id]
+          );
+          vuln.due_date = new Date(Date.now() + days * 86400000);
+        }
+      } catch (slaErr) {
+        // SLA table might not exist yet — ignore silently
+      }
+    }
+
+    // Fire-and-forget: notify admins if critical
+    if (severity === 'critical') {
+      (async () => {
+        try {
+          const assetRow = await db.query('SELECT ip_address FROM assets WHERE id=$1', [asset_id]);
+          const vulnWithAsset = { ...vuln, ip_address: assetRow.rows[0]?.ip_address };
+          const admins = await db.query("SELECT email FROM users WHERE role='admin' AND is_active=TRUE AND email IS NOT NULL AND email <> ''");
+          const adminEmails = admins.rows.map(u => u.email);
+          await mailer.notifyCritical(vulnWithAsset, adminEmails);
+        } catch (e) { /* ignore email errors */ }
+      })();
+    }
+
+    res.status(201).json(vuln);
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 

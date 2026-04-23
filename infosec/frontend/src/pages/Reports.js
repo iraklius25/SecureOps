@@ -1,9 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { api } from '../App';
+import {
+  AreaChart, Area, BarChart, Bar, LineChart, Line,
+  XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer
+} from 'recharts';
+
 const fmt$ = n => '$' + parseFloat(n||0).toLocaleString('en-US',{maximumFractionDigits:0});
 
 function downloadCSV(path, filename) {
-  // Use axios with blob to download CSV with auth header
   api.get(path, { responseType: 'blob' }).then(r => {
     const url = URL.createObjectURL(new Blob([r.data], { type: 'text/csv' }));
     const a   = document.createElement('a'); a.href = url; a.download = filename;
@@ -12,6 +16,223 @@ function downloadCSV(path, filename) {
   }).catch(() => alert('Export failed'));
 }
 
+function openHtmlReport(sections) {
+  const token = localStorage.getItem('token') || '';
+  const params = new URLSearchParams({ token });
+  if (sections.length) params.set('sections', sections.join(','));
+  window.open(`/api/reports/html?${params}`, '_blank');
+}
+
+/* ─── Trends Tab ─────────────────────────────────── */
+function TrendsTab() {
+  const [data, setData] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [err, setErr] = useState('');
+
+  useEffect(() => {
+    api.get('/reports/trends')
+      .then(r => setData(r.data))
+      .catch(e => setErr(e.response?.data?.error || 'Failed to load trends'))
+      .finally(() => setLoading(false));
+  }, []);
+
+  if (loading) return <div className="empty-state"><div className="spinner" /></div>;
+  if (err) return <div className="alert alert-error">{err}</div>;
+  if (!data.length) return (
+    <div className="empty-state">
+      <div className="empty-icon">📈</div>
+      <p>No trend data available yet. Data will appear after vulnerabilities are tracked over time.</p>
+    </div>
+  );
+
+  const chartData = data.map(d => ({
+    ...d,
+    month: d.month,
+    open_vulns:     parseInt(d.open_vulns) || 0,
+    critical_vulns: parseInt(d.critical_vulns) || 0,
+    high_vulns:     parseInt(d.high_vulns) || 0,
+    resolved_vulns: parseInt(d.resolved_vulns) || 0,
+    total_ale:      parseFloat(d.total_ale) || 0,
+  }));
+
+  const axisStyle = { fontSize: 11, fill: 'var(--text3)' };
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+      {/* Open Vulnerabilities by month */}
+      <div className="card">
+        <div className="card-title">Open Vulnerabilities by Month</div>
+        <ResponsiveContainer width="100%" height={220}>
+          <AreaChart data={chartData} margin={{ top: 10, right: 20, left: 0, bottom: 0 }}>
+            <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
+            <XAxis dataKey="month" tick={axisStyle} />
+            <YAxis tick={axisStyle} />
+            <Tooltip
+              contentStyle={{ background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 6, fontSize: 12 }}
+              labelStyle={{ color: 'var(--text)', fontWeight: 600 }}
+            />
+            <Legend wrapperStyle={{ fontSize: 12 }} />
+            <Area type="monotone" dataKey="critical_vulns" name="Critical" stackId="1" stroke="#ef4444" fill="#ef444455" />
+            <Area type="monotone" dataKey="high_vulns" name="High" stackId="1" stroke="#f97316" fill="#f9731655" />
+            <Area type="monotone" dataKey="open_vulns" name="Open Total" stackId="2" stroke="#6366f1" fill="#6366f122" strokeDasharray="4 2" />
+          </AreaChart>
+        </ResponsiveContainer>
+      </div>
+
+      {/* Total ALE over time */}
+      <div className="card">
+        <div className="card-title">Total ALE Over Time</div>
+        <ResponsiveContainer width="100%" height={200}>
+          <AreaChart data={chartData} margin={{ top: 10, right: 20, left: 40, bottom: 0 }}>
+            <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
+            <XAxis dataKey="month" tick={axisStyle} />
+            <YAxis tick={axisStyle} tickFormatter={v => fmt$(v)} />
+            <Tooltip
+              contentStyle={{ background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 6, fontSize: 12 }}
+              formatter={v => [fmt$(v), 'Total ALE']}
+              labelStyle={{ color: 'var(--text)', fontWeight: 600 }}
+            />
+            <Area type="monotone" dataKey="total_ale" name="Total ALE" stroke="#eab308" fill="#eab30833" />
+          </AreaChart>
+        </ResponsiveContainer>
+      </div>
+
+      {/* Resolved vulns per month */}
+      <div className="card">
+        <div className="card-title">Resolved Vulnerabilities per Month</div>
+        <ResponsiveContainer width="100%" height={200}>
+          <BarChart data={chartData} margin={{ top: 10, right: 20, left: 0, bottom: 0 }}>
+            <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
+            <XAxis dataKey="month" tick={axisStyle} />
+            <YAxis tick={axisStyle} />
+            <Tooltip
+              contentStyle={{ background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 6, fontSize: 12 }}
+              labelStyle={{ color: 'var(--text)', fontWeight: 600 }}
+            />
+            <Bar dataKey="resolved_vulns" name="Resolved" fill="#22c55e" radius={[4, 4, 0, 0]} />
+          </BarChart>
+        </ResponsiveContainer>
+      </div>
+
+      {/* Open vs Resolved trend */}
+      <div className="card">
+        <div className="card-title">Open vs Resolved Trend</div>
+        <ResponsiveContainer width="100%" height={200}>
+          <LineChart data={chartData} margin={{ top: 10, right: 20, left: 0, bottom: 0 }}>
+            <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
+            <XAxis dataKey="month" tick={axisStyle} />
+            <YAxis tick={axisStyle} />
+            <Tooltip
+              contentStyle={{ background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 6, fontSize: 12 }}
+              labelStyle={{ color: 'var(--text)', fontWeight: 600 }}
+            />
+            <Legend wrapperStyle={{ fontSize: 12 }} />
+            <Line type="monotone" dataKey="open_vulns" name="Open" stroke="#ef4444" strokeWidth={2} dot={{ r: 4 }} />
+            <Line type="monotone" dataKey="resolved_vulns" name="Resolved" stroke="#22c55e" strokeWidth={2} dot={{ r: 4 }} />
+          </LineChart>
+        </ResponsiveContainer>
+      </div>
+    </div>
+  );
+}
+
+/* ─── Report Builder Tab ─────────────────────────── */
+const REPORT_SECTIONS = [
+  { key: 'executive',  label: 'Executive Summary',       desc: 'Asset counts, ALE totals, vulns by severity' },
+  { key: 'ale',        label: 'ALE Breakdown',           desc: 'Top 10 vulnerabilities by annualised loss' },
+  { key: 'risks',      label: 'Top Risks',               desc: 'Open risk register entries by risk score' },
+  { key: 'vulnstats',  label: 'Recent Findings',         desc: 'Last 20 detected vulnerabilities' },
+  { key: 'assets',     label: 'Asset Summary',           desc: 'Asset count by type' },
+];
+
+function ReportBuilderTab() {
+  const [selected, setSelected] = useState(new Set(['executive', 'ale', 'risks', 'vulnstats', 'assets']));
+
+  const toggle = key => {
+    setSelected(prev => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key); else next.add(key);
+      return next;
+    });
+  };
+
+  const sections = Array.from(selected);
+
+  return (
+    <div className="card">
+      <div className="card-title" style={{ marginBottom: 16 }}>Select Report Sections</div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 20 }}>
+        {REPORT_SECTIONS.map(s => (
+          <label
+            key={s.key}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 12,
+              padding: '10px 14px',
+              background: selected.has(s.key) ? 'rgba(31,111,235,0.08)' : 'var(--bg3)',
+              borderRadius: 'var(--radius)',
+              border: `1px solid ${selected.has(s.key) ? 'rgba(31,111,235,0.3)' : 'var(--border)'}`,
+              cursor: 'pointer',
+              transition: 'all 0.15s',
+            }}
+          >
+            <input
+              type="checkbox"
+              checked={selected.has(s.key)}
+              onChange={() => toggle(s.key)}
+              style={{ width: 16, height: 16, flexShrink: 0 }}
+            />
+            <div>
+              <div style={{ fontWeight: 600, fontSize: 13 }}>{s.label}</div>
+              <div style={{ fontSize: 12, color: 'var(--text3)' }}>{s.desc}</div>
+            </div>
+          </label>
+        ))}
+      </div>
+
+      {selected.size === 0 && (
+        <div style={{ fontSize: 13, color: 'var(--text3)', marginBottom: 16 }}>
+          Select at least one section to generate a report.
+        </div>
+      )}
+
+      <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+        <button
+          className="btn btn-primary"
+          disabled={selected.size === 0}
+          onClick={() => openHtmlReport(sections)}
+        >
+          Generate Report
+        </button>
+        <button
+          className="btn btn-secondary"
+          disabled={selected.size === 0}
+          onClick={() => {
+            const token = localStorage.getItem('token') || '';
+            const params = new URLSearchParams({ token });
+            if (sections.length) params.set('sections', sections.join(','));
+            api.get(`/reports/html?${params}`, { responseType: 'blob' }).then(r => {
+              const url = URL.createObjectURL(new Blob([r.data], { type: 'text/html' }));
+              const a = document.createElement('a');
+              a.href = url; a.download = `secureops-report-${Date.now()}.html`;
+              document.body.appendChild(a); a.click();
+              document.body.removeChild(a); URL.revokeObjectURL(url);
+            }).catch(() => alert('Export failed'));
+          }}
+        >
+          Export HTML
+        </button>
+      </div>
+
+      <div style={{ marginTop: 20, padding: '12px 14px', background: 'var(--bg3)', borderRadius: 'var(--radius)', fontSize: 12, color: 'var(--text3)' }}>
+        <strong>Tip:</strong> After clicking "Generate Report", the HTML opens in a new tab. Use your browser's Print function (Ctrl+P / Cmd+P) and select "Save as PDF" to create a PDF report.
+      </div>
+    </div>
+  );
+}
+
+/* ─── Main Reports Page ──────────────────────────── */
 export function Reports() {
   const [data,    setData]    = useState(null);
   const [ale,     setAle]     = useState(null);
@@ -25,28 +246,38 @@ export function Reports() {
 
   if (loading) return <div className="empty-state"><div className="spinner"/></div>;
 
+  const tabs = [
+    { key: 'executive',     label: 'Executive Summary' },
+    { key: 'ale',           label: 'ALE Breakdown' },
+    { key: 'trends',        label: 'Trends' },
+    { key: 'report-builder',label: 'Report Builder' },
+  ];
+
   return (
     <div>
       <div className="page-header">
         <div><div className="page-title">Reports & Analytics</div></div>
         {/* Export buttons */}
-        <div style={{ display: 'flex', gap: 8 }}>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          <button className="btn btn-secondary btn-sm" onClick={() => openHtmlReport(['executive','ale','risks','vulnstats','assets'])}>
+            Export HTML Report
+          </button>
           <button className="btn btn-secondary" onClick={() => downloadCSV('/reports/export/assets.csv', 'assets.csv')}>
-            ↓ Assets CSV
+            Assets CSV
           </button>
           <button className="btn btn-secondary" onClick={() => downloadCSV('/reports/export/vulnerabilities.csv', 'vulnerabilities.csv')}>
-            ↓ Vulns CSV
+            Vulns CSV
           </button>
           <button className="btn btn-secondary" onClick={() => downloadCSV('/reports/export/risks.csv', 'risks.csv')}>
-            ↓ Risks CSV
+            Risks CSV
           </button>
         </div>
       </div>
 
       <div className="tabs">
-        {['executive','ale'].map(t => (
-          <button key={t} className={`tab-btn ${tab===t?'active':''}`} onClick={()=>setTab(t)}>
-            {t==='ale'?'ALE Breakdown':'Executive Summary'}
+        {tabs.map(t => (
+          <button key={t.key} className={`tab-btn ${tab===t.key?'active':''}`} onClick={()=>setTab(t.key)}>
+            {t.label}
           </button>
         ))}
       </div>
@@ -61,7 +292,7 @@ export function Reports() {
 
           <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 8 }}>
             <button className="btn btn-secondary btn-sm" onClick={() => downloadCSV('/reports/export/executive.csv', 'executive_summary.csv')}>
-              ↓ Export CSV
+              Export CSV
             </button>
           </div>
 
@@ -118,7 +349,7 @@ export function Reports() {
               <div className="stat-sub">{ale.count} open vulnerabilities</div>
             </div>
             <button className="btn btn-secondary" onClick={() => downloadCSV('/reports/export/vulnerabilities.csv', 'vulnerabilities.csv')}>
-              ↓ Export CSV
+              Export CSV
             </button>
           </div>
           <div className="card" style={{padding:0}}>
@@ -142,6 +373,10 @@ export function Reports() {
           </div>
         </div>
       )}
+
+      {tab === 'trends' && <TrendsTab />}
+
+      {tab === 'report-builder' && <ReportBuilderTab />}
     </div>
   );
 }

@@ -31,6 +31,74 @@ function nmapScan(target, options = '') {
   });
 }
 
+// ── Pick best OS from nmap XML host block ─────────────────────
+// Networking appliances (WAP, router, switch, printer, firewall) often appear
+// in nmap's osmatch list even when the real host is a general-purpose server.
+// Strategy: collect all osmatch entries, prefer the highest-accuracy match
+// whose osclass type is NOT a networking appliance; fall back to overall best.
+const APPLIANCE_TYPES   = /\b(WAP|router|switch|hub|printer|firewall|storage-misc|broadband router)\b/i;
+const APPLIANCE_VENDORS = /\b(Actiontec|Cisco|Linksys|Netgear|D-Link|TP-Link|Zyxel|Ubiquiti|MikroTik|Aruba|Juniper|Fortinet|Palo Alto|SonicWall)\b/i;
+const SERVER_FAMILIES   = /\b(Linux|Windows|FreeBSD|OpenBSD|NetBSD|Solaris|AIX|HP-UX|macOS|Darwin|Ubuntu|Debian|RedHat|CentOS|Oracle|RHEL)\b/i;
+// Bootloaders and router firmware that nmap misidentifies for general-purpose servers
+const FIRMWARE_NAMES    = /\b(iPXE|PXE|GRUB|U-Boot|BIOS|UEFI|DD-WRT|OpenWrt|Tomato|FreshTomato|Gargoyle|LEDE)\b/i;
+
+function pickBestOS(block) {
+  const allMatches = [];
+  const osMatchRe = /<osmatch[^>]*name="([^"]+)"[^>]*accuracy="(\d+)"[^>]*>([\s\S]*?)<\/osmatch>/g;
+  let m;
+  while ((m = osMatchRe.exec(block)) !== null) {
+    const name     = m[1];
+    const accuracy = parseInt(m[2]);
+    const inner    = m[3];
+    const classM   = inner.match(/<osclass[^>]*type="([^"]*)"[^>]*vendor="([^"]*)"[^>]*osfamily="([^"]*)"[^>]*osgen="([^"]*)"/);
+    const type     = classM ? classM[1] : '';
+    const vendor   = classM ? classM[2] : '';
+    const family   = classM ? classM[3] : '';
+    const gen      = classM ? classM[4] : '';
+    allMatches.push({ name, accuracy, type, vendor, family, gen });
+  }
+
+  if (allMatches.length === 0) return null;
+
+  allMatches.sort((a, b) => b.accuracy - a.accuracy);
+
+  // Prefer a general-purpose / server OS with accuracy ≥ 80, skip firmware/appliances
+  const serverMatch = allMatches.find(o =>
+    o.accuracy >= 80 &&
+    !APPLIANCE_TYPES.test(o.type) &&
+    !APPLIANCE_VENDORS.test(o.vendor) &&
+    !FIRMWARE_NAMES.test(o.name) &&
+    (SERVER_FAMILIES.test(o.family) || SERVER_FAMILIES.test(o.name) || o.type === 'general purpose')
+  );
+  if (serverMatch) return serverMatch.name;
+
+  // Best match if ≥ 85% and not firmware/bootloader
+  if (allMatches[0].accuracy >= 85 && !FIRMWARE_NAMES.test(allMatches[0].name)) return allMatches[0].name;
+
+  // Low confidence or firmware result — return null, port inference will fill in
+  return null;
+}
+
+// ── Infer OS from open ports when nmap OS detection fails ──────
+// Based on well-known port signatures that strongly indicate an OS type.
+function inferOSFromPorts(ports) {
+  const openPorts = new Set(ports.map(p => p.port));
+  const hasPort   = (...ps) => ps.some(p => openPorts.has(p));
+
+  // Windows Active Directory Domain Controller
+  if (hasPort(88) && hasPort(389)) return 'Windows Server (Domain Controller)';
+  // Windows — RDP or RPC+SMB
+  if (hasPort(3389)) return 'Windows';
+  if (hasPort(445) && hasPort(135)) return 'Windows';
+  if (hasPort(135) && hasPort(139)) return 'Windows';
+  // ESXi / VMware
+  if (hasPort(902) && hasPort(443)) return 'VMware ESXi';
+  // Linux indicators — SSH without Windows ports
+  if (hasPort(22) && !hasPort(135, 139, 445, 3389, 88)) return 'Linux';
+
+  return null;
+}
+
 // ── Parse nmap XML output ─────────────────────────────────────
 function parseNmapXML(xml) {
   const hosts = [];
@@ -45,14 +113,15 @@ function parseNmapXML(xml) {
     const macBlock     = block.match(/<address[^>]*addrtype="mac"[^>]*>/);
     const macMatch     = macBlock ? macBlock[0].match(/addr="([^"]+)"/) : null;
     const hostnameM    = block.match(/hostname name="([^"]+)"/);
-    const osMatch      = block.match(/<osclass[^>]*osfamily="([^"]+)"[^>]*osgen="([^"]*)"/);
-    const osNameM      = block.match(/<osmatch[^>]*name="([^"]+)"/);
+
+    // Parse all osmatch entries with accuracy, pick best non-appliance match
+    const nmapOS = pickBestOS(block);
 
     const host = {
       ip: ipMatch ? ipMatch[1] : null,
       mac: macMatch ? macMatch[1] : null,
       hostname: hostnameM ? hostnameM[1] : null,
-      os_name: osNameM ? osNameM[1] : (osMatch ? `${osMatch[1]} ${osMatch[2]}`.trim() : null),
+      os_name: nmapOS, // may be overridden below after ports are parsed
       ports: []
     };
 
@@ -79,6 +148,11 @@ function parseNmapXML(xml) {
         banner:   bannerM ? bannerM[1] : null,
         cpe:      cpeM ? cpeM[1] : null,
       });
+    }
+
+    // If nmap OS detection returned nothing or a firmware name, infer from ports
+    if (!host.os_name && host.ports.length > 0) {
+      host.os_name = inferOSFromPorts(host.ports);
     }
 
     if (host.ip) hosts.push(host);
@@ -172,7 +246,7 @@ async function upsertAsset(host) {
       UPDATE assets SET
         hostname = COALESCE($2, hostname),
         mac_address = COALESCE($3, mac_address),
-        os_name = COALESCE($4, os_name),
+        os_name = CASE WHEN $4 IS NOT NULL THEN $4 ELSE os_name END,
         last_seen = NOW(), last_scanned = NOW(), status = 'active'
       WHERE ip_address = $1
     `, [host.ip, host.hostname, host.mac, host.os_name]);

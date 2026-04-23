@@ -89,4 +89,59 @@ router.delete('/risks/:riskId/controls/:controlId', auth, requireRole('admin','a
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+/* ── ISO Gap Assessments ──────────────────────────── */
+
+// GET /api/compliance/gap  — list all assessments
+router.get('/gap', auth, async (req, res) => {
+  try {
+    const r = await db.query(
+      `SELECT id, name, description, created_at, updated_at FROM gap_assessments ORDER BY updated_at DESC`
+    );
+    res.json(r.rows);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// POST /api/compliance/gap  — create new assessment
+router.post('/gap', auth, requireRole('admin', 'analyst'), async (req, res) => {
+  const { name, description = '', data = { sheets: [], charts: [] } } = req.body;
+  if (!name) return res.status(400).json({ error: 'name required' });
+  try {
+    const r = await db.query(
+      `INSERT INTO gap_assessments (name, description, data, created_by)
+       VALUES ($1, $2, $3, $4) RETURNING *`,
+      [name, description, JSON.stringify(data), req.user.id]
+    );
+    res.json(r.rows[0]);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// GET /api/compliance/gap/:id  — get single assessment with full data
+router.get('/gap/:id', auth, async (req, res) => {
+  try {
+    const r = await db.query(`SELECT * FROM gap_assessments WHERE id=$1`, [req.params.id]);
+    if (!r.rows[0]) return res.status(404).json({ error: 'Not found' });
+    res.json(r.rows[0]);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// PUT /api/compliance/gap/:id  — update assessment
+router.put('/gap/:id', auth, requireRole('admin', 'analyst'), async (req, res) => {
+  const { name, description, data } = req.body;
+  try {
+    await db.query(
+      `UPDATE gap_assessments SET name=$1, description=$2, data=$3, updated_at=NOW() WHERE id=$4`,
+      [name, description || '', JSON.stringify(data), req.params.id]
+    );
+    res.json({ ok: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// DELETE /api/compliance/gap/:id
+router.delete('/gap/:id', auth, requireRole('admin'), async (req, res) => {
+  try {
+    await db.query(`DELETE FROM gap_assessments WHERE id=$1`, [req.params.id]);
+    res.json({ ok: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 module.exports = router;

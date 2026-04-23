@@ -37,6 +37,16 @@ app.use('/api/audit',          require('./routes/audit'));
 app.use('/api/apikeys',        require('./routes/apikeys'));
 app.use('/api/compliance',     require('./routes/compliance'));
 app.use('/api/settings',       require('./routes/settings'));
+app.use('/api/cve',            require('./routes/cve'));
+app.use('/api/threat',         require('./routes/threat'));
+app.use('/api/patches',        require('./routes/patches'));
+app.use('/api/sla',            require('./routes/sla'));
+app.use('/api/approvals',      require('./routes/approvals'));
+app.use('/api/totp',           require('./routes/totp'));
+app.use('/api/evidence',       require('./routes/evidence'));
+
+// ── Static uploads ──────────────────────────────────────────────
+app.use('/uploads', require('express').static(require('path').join(__dirname, 'uploads')));
 
 // ── Health check ───────────────────────────────────────────────
 app.get('/health', (req, res) => res.json({ status: 'ok', version: '1.0.0', time: new Date() }));

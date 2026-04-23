@@ -1,0 +1,76 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Build frontend
+        run: |
+          cd infosec/frontend
+          npm ci
+          npm run build
+
+      - name: Create release archive
+        run: |
+          mkdir -p release/infosec
+          cp -r infosec/backend release/infosec/
+          cp -r infosec/frontend/build release/infosec/frontend-build
+          cp infosec/INSTALL.md release/
+          cp README.md release/
+          # Remove node_modules and secrets
+          rm -rf release/infosec/backend/node_modules
+          rm -f release/infosec/backend/.env
+          cd release
+          zip -r ../secureops-${{ github.ref_name }}.zip .
+
+      - name: Extract changelog for this version
+        id: changelog
+        run: |
+          VERSION=${{ github.ref_name }}
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: SecureOps ${{ github.ref_name }}
+          body: |
+            ## SecureOps ${{ github.ref_name }}
+
+            ### Installation
+            See [INSTALL.md](https://github.com/${{ github.repository }}/blob/main/infosec/INSTALL.md) for full setup instructions.
+
+            ### What's included
+            - Backend (Node.js API)
+            - Frontend (pre-built static files)
+            - Database schema
+            - Installation guide
+
+            ### Upgrade from previous version
+            ```bash
+            cd /opt/infosec
+            # Download and extract the release zip
+            # Then:
+            cd backend && npm install --production
+            pm2 restart infosec-api
+            sudo cp -r frontend-build/* /opt/infosec/frontend/build/
+            # Apply any new schema changes if noted in release notes
+            ```
+          files: secureops-${{ github.ref_name }}.zip
+          draft: false
+          prerelease: false

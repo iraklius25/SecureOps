@@ -22,9 +22,10 @@
     "node-cron": "^3.0.3",
     "uuid": "^9.0.1",
     "winston": "^3.11.0",
-    "node-nmap": "^4.0.3",
-    "ssh2": "^1.15.0",
-    "net": "^1.0.2"
+    "nodemailer": "^6.9.7",
+    "speakeasy": "^2.0.0",
+    "qrcode": "^1.5.3",
+    "multer": "^1.4.5-lts.1"
   },
   "devDependencies": {
     "nodemon": "^3.0.2"

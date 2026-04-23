@@ -2,11 +2,13 @@ import React, { useEffect, useState } from 'react';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, LineChart, Line, AreaChart, Area } from 'recharts';
 import { api } from '../App';
 import { format } from 'date-fns';
+import { useNavigate } from 'react-router-dom';
 
 const fmt$ = n => '$' + (n >= 1000000 ? (n/1000000).toFixed(1)+'M' : n >= 1000 ? (n/1000).toFixed(0)+'K' : Math.round(n).toLocaleString());
 const SEV_COLORS = { critical: '#f85149', high: '#f0883e', medium: '#e3b341', low: '#3fb950' };
 
 export default function Dashboard() {
+  const nav = useNavigate();
   const [data,    setData]    = useState(null);
   const [loading, setLoading] = useState(true);
 
@@ -51,29 +53,29 @@ export default function Dashboard() {
 
       {/* KPI row */}
       <div className="stat-grid">
-        <div className="stat-card">
+        <div className="stat-card" style={{cursor:'pointer'}} onClick={() => nav('/assets')}>
           <div className="stat-label">Total Assets</div>
           <div className="stat-value">{data.assets?.total || 0}</div>
           <div className="stat-sub">{data.assets?.active || 0} active · {data.critical_assets} critical</div>
         </div>
-        <div className="stat-card">
+        <div className="stat-card" style={{cursor:'pointer'}} onClick={() => nav('/vulnerabilities?severity=critical')}>
           <div className="stat-label">Critical Vulns</div>
           <div className="stat-value" style={{color:'var(--critical)'}}>{data.open_vulns_by_severity?.critical || 0}</div>
           <div className="stat-sub">{data.open_vulns_by_severity?.high || 0} high · {data.open_vulns_by_severity?.medium || 0} medium</div>
         </div>
-        <div className="stat-card">
+        <div className="stat-card" style={{cursor:'pointer'}} onClick={() => nav('/vulnerabilities')}>
           <div className="stat-label">Total Open Vulns</div>
           <div className="stat-value" style={{color:'var(--high)'}}>
             {Object.values(data.open_vulns_by_severity||{}).reduce((a,b)=>a+b,0)}
           </div>
           <div className="stat-sub">Across all assets</div>
         </div>
-        <div className="stat-card">
+        <div className="stat-card" style={{cursor:'pointer'}} onClick={() => nav('/reports')}>
           <div className="stat-label">Annualised Loss (ALE)</div>
           <div className={`stat-value ${aleClass}`}>{fmt$(data.total_ale || 0)}</div>
           <div className="stat-sub">Expected annual risk exposure</div>
         </div>
-        <div className="stat-card">
+        <div className="stat-card" style={{cursor:'pointer'}} onClick={() => nav('/risks')}>
           <div className="stat-label">Open Risks</div>
           <div className="stat-value">{Object.values(data.risks||{}).reduce((a,b)=>a+b,0)}</div>
           <div className="stat-sub">{data.risks?.critical || 0} critical · {data.risks?.high || 0} high</div>
@@ -108,8 +110,8 @@ export default function Dashboard() {
 
       {/* Charts row 1 */}
       <div style={{display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:16, marginBottom:20}}>
-        <div className="card">
-          <div className="card-title">Open Vulnerabilities by Severity</div>
+        <div className="card" style={{cursor:'pointer'}} onClick={() => nav('/vulnerabilities')}>
+          <div className="card-title">Open Vulnerabilities by Severity <span style={{fontSize:11,color:'var(--text3)',fontWeight:400}}>— click to view</span></div>
           <ResponsiveContainer width="100%" height={180}>
             <PieChart>
               <Pie data={vulnBySev} cx="50%" cy="50%" innerRadius={45} outerRadius={75} dataKey="value"
@@ -121,8 +123,8 @@ export default function Dashboard() {
           </ResponsiveContainer>
         </div>
 
-        <div className="card">
-          <div className="card-title">Risk Register Distribution</div>
+        <div className="card" style={{cursor:'pointer'}} onClick={() => nav('/risks')}>
+          <div className="card-title">Risk Register Distribution <span style={{fontSize:11,color:'var(--text3)',fontWeight:400}}>— click to view</span></div>
           <ResponsiveContainer width="100%" height={180}>
             <BarChart data={riskData} margin={{top:5,bottom:0}}>
               <XAxis dataKey="name" tick={{fontSize:11,fill:'var(--text2)'}} axisLine={false} tickLine={false} />

@@ -1,0 +1,17 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(node -e ':*)",
+      "Bash(cmd.exe /c \"node -e \\\\\"const r=require\\('C:/Users/igigilashvili/Desktop/files/infosec-platform/infosec/backend/routes/sla.js'\\);console.log\\('OK sla'\\)\\\\\" 2>&1\")",
+      "Bash(pm2 logs:*)",
+      "Read(//opt/infosec/**)",
+      "Bash(sudo npm:*)",
+      "Bash(ls /opt/)",
+      "Bash(sudo ss:*)",
+      "Bash(netstat -tlnp)",
+      "Read(//c/Program Files/**)",
+      "Read(//c/Users/igigilashvili/AppData/Roaming/**)",
+      "Read(//c/Users/igigilashvili/AppData/Local/**)"
+    ]
+  }
+}

@@ -142,6 +142,75 @@ function NewScanModal({ onClose, onStarted }) {
   );
 }
 
+function AddToInventoryForm({ asset, onSaved }) {
+  const [open, setOpen] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [form, setForm] = useState({
+    criticality: asset.criticality || 'medium',
+    department: asset.department || '',
+    owner: asset.owner || '',
+    asset_value: asset.asset_value || '',
+    notes: asset.notes || '',
+    status: 'active',
+  });
+  const set = k => e => setForm(p => ({ ...p, [k]: e.target.value }));
+
+  const save = async () => {
+    setSaving(true);
+    try {
+      await api.put(`/assets/${asset.id}`, form);
+      setSaved(true);
+      setOpen(false);
+      if (onSaved) onSaved();
+    } finally { setSaving(false); }
+  };
+
+  if (saved) return <span style={{ fontSize: 12, color: 'var(--low)', fontWeight: 600 }}>✓ In Inventory</span>;
+
+  return (
+    <div>
+      <button className="btn btn-primary btn-sm" onClick={() => setOpen(o => !o)}>
+        {open ? 'Cancel' : '+ Add to Inventory'}
+      </button>
+      {open && (
+        <div style={{ marginTop: 10, padding: '12px 14px', background: 'var(--bg3)', borderRadius: 'var(--radius)', border: '1px solid var(--border2)' }}>
+          <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 10 }}>
+            <div className="form-group" style={{ marginBottom: 0, minWidth: 140 }}>
+              <label style={{ fontSize: 11 }}>Criticality</label>
+              <select value={form.criticality} onChange={set('criticality')} style={{ padding: '4px 8px', fontSize: 12 }}>
+                <option value="critical">Critical</option>
+                <option value="high">High</option>
+                <option value="medium">Medium</option>
+                <option value="low">Low</option>
+              </select>
+            </div>
+            <div className="form-group" style={{ marginBottom: 0, minWidth: 140 }}>
+              <label style={{ fontSize: 11 }}>Department</label>
+              <input value={form.department} onChange={set('department')} placeholder="e.g. IT" style={{ padding: '4px 8px', fontSize: 12 }} />
+            </div>
+            <div className="form-group" style={{ marginBottom: 0, minWidth: 140 }}>
+              <label style={{ fontSize: 11 }}>Owner</label>
+              <input value={form.owner} onChange={set('owner')} placeholder="e.g. John Doe" style={{ padding: '4px 8px', fontSize: 12 }} />
+            </div>
+            <div className="form-group" style={{ marginBottom: 0, minWidth: 120 }}>
+              <label style={{ fontSize: 11 }}>Asset Value ($)</label>
+              <input type="number" value={form.asset_value} onChange={set('asset_value')} placeholder="0" style={{ padding: '4px 8px', fontSize: 12 }} />
+            </div>
+          </div>
+          <div className="form-group" style={{ marginBottom: 10 }}>
+            <label style={{ fontSize: 11 }}>Notes</label>
+            <input value={form.notes} onChange={set('notes')} placeholder="Optional notes" style={{ padding: '4px 8px', fontSize: 12 }} />
+          </div>
+          <button className="btn btn-primary btn-sm" onClick={save} disabled={saving}>
+            {saving ? 'Saving...' : 'Save to Inventory'}
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function ScanResultsModal({ scan, onClose }) {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -174,11 +243,14 @@ function ScanResultsModal({ scan, onClose }) {
           ) : (
             data.assets.map(asset => (
               <div key={asset.id} style={{ borderBottom: '1px solid var(--border)', padding: '14px 20px' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 10 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 10, flexWrap: 'wrap' }}>
                   <span className="mono" style={{ color: 'var(--info)', fontWeight: 600 }}>{asset.ip_address}</span>
                   {asset.hostname && <span style={{ color: 'var(--text2)', fontSize: 13 }}>{asset.hostname}</span>}
                   {asset.os_name && <span style={{ color: 'var(--text3)', fontSize: 12 }}>{asset.os_name}</span>}
                   <span style={{ color: severityColor[asset.criticality] || 'var(--text3)', fontSize: 11, fontWeight: 600, textTransform: 'uppercase' }}>{asset.criticality}</span>
+                  <div style={{ marginLeft: 'auto' }}>
+                    <AddToInventoryForm asset={asset} />
+                  </div>
                 </div>
                 {asset.ports?.length ? (
                   <table style={{ width: '100%', fontSize: 12 }}>
