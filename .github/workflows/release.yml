@@ -23,7 +23,7 @@ jobs:
       - name: Build frontend
         run: |
           cd infosec/frontend
-          npm ci
+          npm install
           npm run build
 
       - name: Create release archive
