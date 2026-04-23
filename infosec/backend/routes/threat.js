@@ -28,7 +28,7 @@ router.post('/check', auth, requireRole('admin', 'analyst'), async (req, res) =>
   try {
     const result = await checkIP(ip);
     if (!result) {
-      return res.status(503).json({ error: 'AbuseIPDB check failed or API key not configured' });
+      return res.status(503).json({ error: 'AbuseIPDB check failed — verify API key and that the server can reach api.abuseipdb.com:443 (check firewall rules and backend logs for details)' });
     }
 
     // Upsert to threat_intel table

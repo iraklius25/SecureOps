@@ -1,7 +1,13 @@
-const logger = require('./logger');
-const db     = require('../db');
+const https   = require('https');
+const logger  = require('./logger');
+const db      = require('../db');
 
-const ABUSEIPDB_URL = 'https://api.abuseipdb.com/api/v2/check';
+const ABUSEIPDB_HOST = 'api.abuseipdb.com';
+const ABUSEIPDB_PATH = '/api/v2/check';
+
+// Allow disabling TLS verification via env — needed when a corporate proxy
+// presents its own certificate (set ABUSEIPDB_REJECT_UNAUTHORIZED=false in .env)
+const REJECT_UNAUTHORIZED = process.env.ABUSEIPDB_REJECT_UNAUTHORIZED !== 'false';
 
 async function getApiKey() {
   try {
@@ -11,9 +17,23 @@ async function getApiKey() {
   return process.env.ABUSEIPDB_API_KEY || null;
 }
 
+function httpsGet(options, timeoutMs = 10000) {
+  return new Promise((resolve, reject) => {
+    const req = https.request(options, (res) => {
+      let raw = '';
+      res.setEncoding('utf8');
+      res.on('data', chunk => { raw += chunk; });
+      res.on('end', () => resolve({ status: res.statusCode, body: raw }));
+    });
+    req.setTimeout(timeoutMs, () => { req.destroy(); reject(new Error('Request timed out')); });
+    req.on('error', reject);
+    req.end();
+  });
+}
+
 /**
  * Check an IP address against AbuseIPDB API v2.
- * Returns null if no API key is configured.
+ * Returns null if no API key is configured or the request fails.
  */
 async function checkIP(ip) {
   const apiKey = await getApiKey();
@@ -22,31 +42,32 @@ async function checkIP(ip) {
     return null;
   }
 
-  const url = `${ABUSEIPDB_URL}?ipAddress=${encodeURIComponent(ip)}&maxAgeInDays=90&verbose`;
+  const query = `ipAddress=${encodeURIComponent(ip)}&maxAgeInDays=90&verbose`;
 
   try {
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 8000);
-
-    const response = await fetch(url, {
+    const { status, body } = await httpsGet({
+      hostname: ABUSEIPDB_HOST,
+      path: `${ABUSEIPDB_PATH}?${query}`,
+      method: 'GET',
       headers: {
         'Key': apiKey,
         'Accept': 'application/json',
       },
-      signal: controller.signal,
+      rejectUnauthorized: REJECT_UNAUTHORIZED,
     });
 
-    clearTimeout(timeout);
-
-    if (!response.ok) {
-      const body = await response.text().catch(() => '');
-      logger.error(`threatintel: AbuseIPDB returned ${response.status} for ${ip}: ${body}`);
+    if (status !== 200) {
+      logger.error(`threatintel: AbuseIPDB returned HTTP ${status} for ${ip}: ${body}`);
       return null;
     }
 
-    const json = await response.json();
-    const d = json.data;
+    let json;
+    try { json = JSON.parse(body); } catch (_) {
+      logger.error(`threatintel: non-JSON response for ${ip}`);
+      return null;
+    }
 
+    const d = json.data;
     if (!d) {
       logger.warn(`threatintel: unexpected response format for ${ip}`);
       return null;
@@ -65,11 +86,7 @@ async function checkIP(ip) {
       raw_data: d,
     };
   } catch (e) {
-    if (e.name === 'AbortError') {
-      logger.error(`threatintel: request timed out for ${ip}`);
-    } else {
-      logger.error(`threatintel: error checking ${ip}: ${e.message}`);
-    }
+    logger.error(`threatintel: error checking ${ip}: ${e.message}`);
     return null;
   }
 }
