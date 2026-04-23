@@ -1,6 +1,58 @@
 const router = require('express').Router();
+const path   = require('path');
+const fs     = require('fs');
+const multer = require('multer');
 const db     = require('../db');
 const { auth, requireRole } = require('../middleware/auth');
+
+const LOGO_DIR = path.join(__dirname, '..', 'uploads', 'logo');
+if (!fs.existsSync(LOGO_DIR)) fs.mkdirSync(LOGO_DIR, { recursive: true });
+
+const logoUpload = multer({
+  storage: multer.diskStorage({
+    destination: (_req, _file, cb) => cb(null, LOGO_DIR),
+    filename: (_req, file, cb) => cb(null, 'org-logo' + path.extname(file.originalname).toLowerCase()),
+  }),
+  limits: { fileSize: 2 * 1024 * 1024 },
+  fileFilter: (_req, file, cb) => {
+    if (/^image\/(png|jpeg|gif|svg\+xml|webp)$/.test(file.mimetype)) cb(null, true);
+    else cb(new Error('Only image files are allowed'));
+  },
+});
+
+// GET /api/settings/logo — public, no auth needed
+router.get('/logo', async (_req, res) => {
+  try {
+    const r = await db.query("SELECT value FROM settings WHERE key='org_logo'");
+    const logoPath = r.rows[0]?.value;
+    if (!logoPath || !fs.existsSync(logoPath)) return res.status(404).json({ error: 'No logo set' });
+    res.sendFile(logoPath);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// POST /api/settings/logo — admin only
+router.post('/logo', auth, requireRole('admin'), logoUpload.single('logo'), async (req, res) => {
+  if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
+  try {
+    await db.query(`
+      INSERT INTO settings (key, value, updated_at)
+      VALUES ('org_logo', $1, NOW())
+      ON CONFLICT (key) DO UPDATE SET value=$1, updated_at=NOW()
+    `, [req.file.path]);
+    res.json({ url: '/api/settings/logo' });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// DELETE /api/settings/logo — admin only
+router.delete('/logo', auth, requireRole('admin'), async (req, res) => {
+  try {
+    const r = await db.query("SELECT value FROM settings WHERE key='org_logo'");
+    const logoPath = r.rows[0]?.value;
+    if (logoPath && fs.existsSync(logoPath)) fs.unlinkSync(logoPath);
+    await db.query("DELETE FROM settings WHERE key='org_logo'");
+    res.json({ ok: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
 
 // GET /api/settings  — all settings (admin only)
 router.get('/', auth, requireRole('admin'), async (req, res) => {

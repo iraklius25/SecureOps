@@ -1,6 +1,6 @@
-import React, { useState, useContext } from 'react';
+import React, { useState, useContext, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { AuthContext } from '../App';
+import { AuthContext, api } from '../App';
 
 export default function Login() {
   const { login, totpLogin, user } = useContext(AuthContext);
@@ -8,11 +8,18 @@ export default function Login() {
   const [form, setForm] = useState({ username: '', password: '' });
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [logoUrl, setLogoUrl] = useState(null);
 
   // 2FA step state
   const [totpRequired, setTotpRequired] = useState(false);
   const [userId, setUserId] = useState(null);
   const [otpCode, setOtpCode] = useState('');
+
+  useEffect(() => {
+    api.get('/settings/logo', { responseType: 'blob' })
+      .then(r => setLogoUrl(URL.createObjectURL(r.data)))
+      .catch(() => {});
+  }, []);
 
   if (user) { nav('/'); return null; }
 
@@ -48,7 +55,11 @@ export default function Login() {
     <div className="login-page">
       <div className="login-card">
         <div className="login-logo">
-          <div className="icon">🛡️</div>
+          {logoUrl ? (
+            <img src={logoUrl} alt="Organization logo" style={{ maxHeight: 80, maxWidth: 220, marginBottom: 12, objectFit: 'contain' }} />
+          ) : (
+            <div className="icon">🛡️</div>
+          )}
           <h1>SecureOps</h1>
           <p>InfoSec Risk Management Platform</p>
         </div>

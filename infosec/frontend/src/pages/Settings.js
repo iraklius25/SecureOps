@@ -357,6 +357,73 @@ function SLATab() {
   );
 }
 
+/* ─── Branding Tab ───────────────────────────────── */
+function BrandingTab() {
+  const [logoUrl, setLogoUrl] = useState(null);
+  const [uploading, setUploading] = useState(false);
+  const [msg, setMsg] = useState('');
+
+  const load = useCallback(() => {
+    api.get('/settings/logo', { responseType: 'blob' })
+      .then(r => setLogoUrl(URL.createObjectURL(r.data)))
+      .catch(() => setLogoUrl(null));
+  }, []);
+
+  useEffect(() => { load(); }, [load]);
+
+  const upload = async e => {
+    const file = e.target.files[0];
+    if (!file) return;
+    setUploading(true); setMsg('');
+    const fd = new FormData();
+    fd.append('logo', file);
+    try {
+      await api.post('/settings/logo', fd, { headers: { 'Content-Type': 'multipart/form-data' } });
+      setMsg('Logo uploaded successfully.');
+      load();
+    } catch (ex) {
+      setMsg(ex.response?.data?.error || 'Upload failed');
+    } finally { setUploading(false); }
+  };
+
+  const removeLogo = async () => {
+    if (!window.confirm('Remove the organization logo?')) return;
+    await api.delete('/settings/logo').catch(() => {});
+    setLogoUrl(null);
+    setMsg('Logo removed.');
+  };
+
+  return (
+    <div className="card">
+      <div className="card-title" style={{ marginBottom: 20 }}>Organization Branding</div>
+      {msg && <div className={`alert ${msg.includes('fail') || msg.includes('Error') ? 'alert-error' : 'alert-success'}`} style={{ marginBottom: 16 }}>{msg}</div>}
+
+      <div style={{ marginBottom: 20 }}>
+        <div style={{ fontSize: 13, fontWeight: 500, marginBottom: 8 }}>Current Logo</div>
+        {logoUrl ? (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+            <img src={logoUrl} alt="Organization logo" style={{ maxHeight: 80, maxWidth: 240, borderRadius: 'var(--radius)', border: '1px solid var(--border2)', padding: 8, background: 'var(--bg3)' }} />
+            <button className="btn btn-danger btn-sm" onClick={removeLogo}>Remove</button>
+          </div>
+        ) : (
+          <div style={{ fontSize: 13, color: 'var(--text3)' }}>No logo uploaded yet.</div>
+        )}
+      </div>
+
+      <div>
+        <div style={{ fontSize: 13, fontWeight: 500, marginBottom: 8 }}>Upload New Logo</div>
+        <div style={{ fontSize: 12, color: 'var(--text3)', marginBottom: 12 }}>
+          Accepted formats: PNG, JPG, SVG, WebP. Max size: 2MB. Recommended: transparent PNG, at least 200×60px.
+        </div>
+        <label className="btn btn-secondary" style={{ cursor: 'pointer', display: 'inline-block' }}>
+          {uploading ? 'Uploading...' : '📁 Choose Logo File'}
+          <input type="file" accept="image/*" onChange={upload} style={{ display: 'none' }} disabled={uploading} />
+        </label>
+      </div>
+    </div>
+  );
+}
+
 /* ─── Main Settings Page ─────────────────────────── */
 export default function Settings() {
   const [settings,  setSettings]  = useState([]);
@@ -417,6 +484,7 @@ export default function Settings() {
     { key: 'sla',              label: 'SLA & Risk Appetite' },
     { key: 'threat-intel',     label: 'Threat Intelligence' },
     { key: 'scheduled-reports',label: 'Scheduled Reports' },
+    { key: 'branding',         label: 'Branding' },
   ];
 
   return (
@@ -595,6 +663,8 @@ export default function Settings() {
           {schedModal && <ScheduledReportModal onClose={() => setSchedModal(false)} onSaved={() => { setSchedModal(false); load(); }} />}
         </div>
       )}
+
+      {tab === 'branding' && <BrandingTab />}
     </div>
   );
 }
