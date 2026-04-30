@@ -8,8 +8,8 @@ async function seed() {
   console.log('Seeding database...');
   const hash = await bcrypt.hash('Admin@123!', 12);
   await db.query(`
-    INSERT INTO users (username, email, password, full_name, role)
-    VALUES ('admin', 'admin@company.local', $1, 'System Administrator', 'admin')
+    INSERT INTO users (username, email, password, full_name, role, force_password_change)
+    VALUES ('admin', 'admin@company.local', $1, 'System Administrator', 'admin', TRUE)
     ON CONFLICT (username) DO NOTHING
   `, [hash]);
   console.log('✓ Admin user created: admin / Admin@123!');

@@ -141,6 +141,7 @@ psql -U infosec_user -d infosec_db -h localhost -f schema_v3_fix.sql
 psql -U infosec_user -d infosec_db -h localhost -f schema_fix.sql
 psql -U infosec_user -d infosec_db -h localhost -f schema_cve_cache.sql
 psql -U infosec_user -d infosec_db -h localhost -f schema_gap_assessment.sql
+psql -U infosec_user -d infosec_db -h localhost -f schema_force_password.sql
 ```
 
 ### Verify — must show 28 tables
@@ -359,6 +360,7 @@ psql -U infosec_user -d infosec_db -h localhost -f schema_v3_fix.sql
 psql -U infosec_user -d infosec_db -h localhost -f schema_fix.sql
 psql -U infosec_user -d infosec_db -h localhost -f schema_cve_cache.sql
 psql -U infosec_user -d infosec_db -h localhost -f schema_gap_assessment.sql
+psql -U infosec_user -d infosec_db -h localhost -f schema_force_password.sql
 ```
 
 ### Table count is less than 28

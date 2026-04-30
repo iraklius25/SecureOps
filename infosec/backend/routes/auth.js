@@ -27,7 +27,7 @@ router.post('/login', async (req, res) => {
 
     await db.query('UPDATE users SET last_login=NOW() WHERE id=$1', [u.id]);
     const token = jwt.sign({ id: u.id, role: u.role }, process.env.JWT_SECRET, { expiresIn: '12h' });
-    res.json({ token, user: { id: u.id, username: u.username, email: u.email, role: u.role, full_name: u.full_name } });
+    res.json({ token, user: { id: u.id, username: u.username, email: u.email, role: u.role, full_name: u.full_name, force_password_change: u.force_password_change } });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
@@ -58,7 +58,7 @@ router.post('/totp-login', async (req, res) => {
 
     await db.query('UPDATE users SET last_login=NOW() WHERE id=$1', [u.id]);
     const jwtToken = jwt.sign({ id: u.id, role: u.role }, process.env.JWT_SECRET, { expiresIn: '12h' });
-    res.json({ token: jwtToken, user: { id: u.id, username: u.username, email: u.email, role: u.role, full_name: u.full_name } });
+    res.json({ token: jwtToken, user: { id: u.id, username: u.username, email: u.email, role: u.role, full_name: u.full_name, force_password_change: u.force_password_change } });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
@@ -75,7 +75,10 @@ router.post('/change-password', auth, async (req, res) => {
     const valid = await bcrypt.compare(current, user.rows[0].password);
     if (!valid) return res.status(401).json({ error: 'Current password incorrect' });
     const hashed = await bcrypt.hash(newPassword, 12);
-    await db.query('UPDATE users SET password=$1, updated_at=NOW() WHERE id=$2', [hashed, req.user.id]);
+    await db.query(
+      'UPDATE users SET password=$1, force_password_change=FALSE, updated_at=NOW() WHERE id=$2',
+      [hashed, req.user.id]
+    );
     res.json({ message: 'Password updated' });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });

@@ -18,7 +18,8 @@ import Settings       from './pages/Settings';
 import Patches        from './pages/Patches';
 import ThreatIntel    from './pages/ThreatIntel';
 import Topology       from './pages/Topology';
-import Approvals      from './pages/Approvals';
+import Approvals             from './pages/Approvals';
+import ForceChangePassword   from './pages/ForceChangePassword';
 import './App.css';
 
 export const AuthContext = createContext(null);
@@ -237,7 +238,7 @@ function AuthProvider({ children }) {
   const logout = () => { localStorage.removeItem('token'); setUser(null); };
 
   if (loading) return <div className="loading-screen"><div className="spinner"/><span>Loading...</span></div>;
-  return <AuthContext.Provider value={{ user, login, totpLogin, logout }}>{children}</AuthContext.Provider>;
+  return <AuthContext.Provider value={{ user, setUser, login, totpLogin, logout }}>{children}</AuthContext.Provider>;
 }
 
 const NAV = [
@@ -470,6 +471,7 @@ function Layout({ children }) {
 function PrivateRoute({ children, roles }) {
   const { user } = useContext(AuthContext);
   if (!user) return <Navigate to="/login" />;
+  if (user.force_password_change) return <Navigate to="/force-change-password" />;
   if (roles && !roles.includes(user.role)) return <Navigate to="/" />;
   return <Layout>{children}</Layout>;
 }
@@ -480,6 +482,7 @@ export default function App() {
       <BrowserRouter>
         <Routes>
           <Route path="/login" element={<Login />} />
+          <Route path="/force-change-password" element={<ForceChangePassword />} />
           <Route path="/" element={<PrivateRoute><Dashboard /></PrivateRoute>} />
           <Route path="/assets" element={<PrivateRoute><Assets /></PrivateRoute>} />
           <Route path="/scans" element={<PrivateRoute roles={['admin','analyst']}><Scans /></PrivateRoute>} />
