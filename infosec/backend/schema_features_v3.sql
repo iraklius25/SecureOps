@@ -33,7 +33,7 @@ CREATE TABLE IF NOT EXISTS patches (
 
 CREATE TABLE IF NOT EXISTS asset_patches (
   id         SERIAL PRIMARY KEY,
-  asset_id   INTEGER REFERENCES assets(id) ON DELETE CASCADE,
+  asset_id   UUID REFERENCES assets(id) ON DELETE CASCADE,
   patch_id   INTEGER REFERENCES patches(id) ON DELETE CASCADE,
   status     TEXT DEFAULT 'pending',
   applied_at TIMESTAMPTZ,
@@ -46,8 +46,8 @@ CREATE TABLE IF NOT EXISTS asset_patches (
 -- Feature 6: Compliance Evidence
 CREATE TABLE IF NOT EXISTS compliance_evidence (
   id          SERIAL PRIMARY KEY,
-  control_id  INTEGER REFERENCES compliance_controls(id) ON DELETE CASCADE,
-  risk_id     INTEGER REFERENCES risks(id) ON DELETE SET NULL,
+  control_id  UUID REFERENCES compliance_controls(id) ON DELETE CASCADE,
+  risk_id     UUID REFERENCES risks(id) ON DELETE SET NULL,
   filename    TEXT NOT NULL,
   mimetype    TEXT,
   file_size   INTEGER,
@@ -84,7 +84,7 @@ WHERE NOT EXISTS (SELECT 1 FROM risk_appetite);
 -- Feature 10: Vulnerability Approvals
 CREATE TABLE IF NOT EXISTS vuln_approvals (
   id            SERIAL PRIMARY KEY,
-  vuln_id       INTEGER REFERENCES vulnerabilities(id) ON DELETE CASCADE,
+  vuln_id       UUID REFERENCES vulnerabilities(id) ON DELETE CASCADE,
   action        TEXT NOT NULL,
   requested_by  UUID REFERENCES users(id) ON DELETE SET NULL,
   approved_by   UUID REFERENCES users(id) ON DELETE SET NULL,
