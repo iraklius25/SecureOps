@@ -92,7 +92,7 @@ CREATE TABLE IF NOT EXISTS vulnerabilities (
     status          VARCHAR(30) DEFAULT 'open' CHECK (status IN ('open','in_progress','mitigated','accepted','false_positive','closed')),
     evidence        TEXT,
     remediation     TEXT,
-    references      TEXT[],
+    ref_links       TEXT[],
     -- ALE/Risk metrics
     asset_value     NUMERIC(15,2) DEFAULT 0,
     exposure_factor NUMERIC(5,2) DEFAULT 0,
@@ -199,7 +199,7 @@ CREATE TABLE IF NOT EXISTS vuln_rules (
     cvss_score      NUMERIC(4,1),
     cve_id          VARCHAR(50),
     remediation     TEXT,
-    references      TEXT[],
+    ref_links       TEXT[],
     is_active       BOOLEAN DEFAULT TRUE,
     created_at      TIMESTAMPTZ DEFAULT NOW()
 );
