@@ -9,7 +9,7 @@
 |-----------|---------|
 | OS | Ubuntu 22.04 LTS |
 | Node.js | 20.x (LTS) |
-| PostgreSQL | 15 |
+| PostgreSQL | 14 or 15 |
 | nmap | 7.x+ |
 | RAM | 4 GB minimum |
 | Disk | 20 GB minimum |
@@ -27,38 +27,42 @@ sudo apt install -y curl wget git build-essential
 
 ## STEP 2 — Install Node.js 20
 
-> **Do not use `apt install nodejs`** — Ubuntu's default repos ship an older version.
+> **Do not use `apt install nodejs`** — Ubuntu's default repos ship an old version (12.x).
+
+### Option A — NodeSource (standard internet access)
 
 ```bash
 curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
 sudo apt install -y nodejs
+```
 
-# Verify
+### Option B — Binary download (corporate/restricted networks where NodeSource is blocked)
+
+```bash
+cd ~
+wget --no-check-certificate https://nodejs.org/dist/v20.19.1/node-v20.19.1-linux-x64.tar.xz
+tar -xf node-v20.19.1-linux-x64.tar.xz
+sudo cp -r node-v20.19.1-linux-x64/{bin,lib,include,share} /usr/local/
+```
+
+### Verify
+
+```bash
 node --version   # must show v20.x.x
 npm --version    # must show 10.x.x
 ```
 
 ---
 
-## STEP 3 — Install PostgreSQL 15
+## STEP 3 — Install PostgreSQL
 
-> **Do not use `apt install postgresql`** — Ubuntu 22.04 defaults to PG 14.
+Ubuntu's default repo ships PostgreSQL 14 which is fully compatible with this application.
 
 ```bash
-# Add the official PostgreSQL repo
-sudo apt install -y gnupg
-curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc | sudo gpg --dearmor -o /etc/apt/trusted.gpg.d/postgresql.gpg
-echo "deb http://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" | sudo tee /etc/apt/sources.list.d/pgdg.list
-
-sudo apt update
-sudo apt install -y postgresql-15
-
-# Start and enable
+sudo apt install -y postgresql postgresql-contrib
 sudo systemctl start postgresql
 sudo systemctl enable postgresql
-
-# Verify
-psql --version   # must show psql (PostgreSQL) 15.x
+psql --version   # should show PostgreSQL 14.x
 ```
 
 ### Create database and user
@@ -74,14 +78,20 @@ GRANT ALL ON SCHEMA public TO infosec_user;
 EOF
 ```
 
-> **Replace `CHANGE_ME_STRONG_PASSWORD` with a real password. Write it down — you will need it in Step 6.**
+> **Replace `CHANGE_ME_STRONG_PASSWORD` with a real password. Write it down — you will need it in Step 7.**
+
+### Avoid repeated password prompts (recommended)
+
+```bash
+echo "localhost:5432:infosec_db:infosec_user:CHANGE_ME_STRONG_PASSWORD" > ~/.pgpass
+chmod 600 ~/.pgpass
+```
 
 ### Test the connection
 
 ```bash
 psql -U infosec_user -d infosec_db -h localhost -c "SELECT version();"
-# You will be prompted for your password.
-# Expected output: PostgreSQL 15.x ...
+# Expected: PostgreSQL 14.x ...
 ```
 
 ---
@@ -90,12 +100,8 @@ psql -U infosec_user -d infosec_db -h localhost -c "SELECT version();"
 
 ```bash
 sudo apt install -y nmap
-
-# Verify
-nmap --version   # must show 7.x or higher
-
-# Allow nmap to run OS detection without root (required for scans)
 sudo setcap cap_net_raw,cap_net_admin+eip $(which nmap)
+nmap --version   # must show 7.x or higher
 ```
 
 ---
@@ -137,13 +143,11 @@ psql -U infosec_user -d infosec_db -h localhost -f schema_cve_cache.sql
 psql -U infosec_user -d infosec_db -h localhost -f schema_gap_assessment.sql
 ```
 
-Enter your database password when prompted for each file.
-
-### Verify tables were created
+### Verify — must show 28 tables
 
 ```bash
 psql -U infosec_user -d infosec_db -h localhost -c "\dt"
-# Should list 20+ tables (assets, vulnerabilities, risks, users, etc.)
+# Expected: 28 rows
 ```
 
 ---
@@ -163,6 +167,8 @@ NODE_ENV=production
 PORT=4000
 
 # Use the password from Step 3
+# IMPORTANT: if your password contains $, escape it as \$
+# Example: S3cur30ps$2026 → S3cur30ps\$2026
 DATABASE_URL=postgresql://infosec_user:CHANGE_ME_STRONG_PASSWORD@localhost:5432/infosec_db
 
 # Generate a secure secret and paste it below:
@@ -186,6 +192,7 @@ node -e "console.log(require('crypto').randomBytes(64).toString('hex'))"
 
 ```bash
 npm install
+# Deprecation warnings are normal — not errors
 ```
 
 ### Create the default admin user
@@ -205,18 +212,24 @@ npm run seed
 cd /opt/infosec/infosec/frontend
 npm install
 npm run build
-# Creates a build/ folder with static files
+# Creates a build/ folder. Deprecation warnings are normal.
 ```
 
 ---
 
 ## STEP 10 — Configure Nginx
 
+Get your server IP first:
+
+```bash
+hostname -I | awk '{print $1}'
+```
+
 ```bash
 sudo nano /etc/nginx/sites-available/infosec
 ```
 
-Paste this configuration (replace `YOUR_SERVER_IP` with your actual IP or domain):
+Paste this configuration (replace `YOUR_SERVER_IP` with the IP from above):
 
 ```nginx
 server {
@@ -226,12 +239,10 @@ server {
     root /opt/infosec/infosec/frontend/build;
     index index.html;
 
-    # React router — serve index.html for all non-API paths
     location / {
         try_files $uri $uri/ /index.html;
     }
 
-    # Proxy API calls to Node.js
     location /api {
         proxy_pass http://localhost:4000;
         proxy_http_version 1.1;
@@ -251,12 +262,10 @@ server {
 ```
 
 ```bash
-# Enable and activate
 sudo ln -s /etc/nginx/sites-available/infosec /etc/nginx/sites-enabled/
 sudo rm -f /etc/nginx/sites-enabled/default
-
 sudo nginx -t        # must say "syntax is ok"
-sudo systemctl reload nginx
+sudo systemctl start nginx
 sudo systemctl enable nginx
 ```
 
@@ -267,32 +276,28 @@ sudo systemctl enable nginx
 ```bash
 cd /opt/infosec/infosec/backend
 pm2 start server.js --name infosec-api
-
-# Persist across reboots
 pm2 save
 pm2 startup
-# Run the command that pm2 startup prints (it looks like: sudo env PATH=... pm2 startup ...)
 ```
+
+> **Important:** `pm2 startup` prints a `sudo env PATH=...` command. Copy and run that command exactly as printed — this makes the backend survive reboots.
 
 ---
 
 ## STEP 12 — Verify everything is running
 
 ```bash
-# 1. Backend health check
+# Backend health
 curl http://localhost:4000/health
 # Expected: {"status":"ok",...}
 
-# 2. Database connection
-node -e "require('./db').query('SELECT NOW()').then(r=>console.log('DB OK:', r.rows[0].now)).catch(e=>console.error('DB FAIL:', e.message))"
-
-# 3. Nginx serving frontend
+# Frontend via Nginx
 curl -I http://localhost/
 # Expected: HTTP/1.1 200 OK
 
-# 4. PM2 process status
+# PM2 status
 pm2 status
-# infosec-api should show status: online
+# infosec-api should show: online
 ```
 
 ### Open in browser
@@ -323,8 +328,6 @@ sudo ufw status
 ```bash
 sudo apt install -y certbot python3-certbot-nginx
 sudo certbot --nginx -d yourdomain.example.com
-
-# Auto-renew
 echo "0 3 * * * root certbot renew --quiet" | sudo tee /etc/cron.d/certbot-renew
 ```
 
@@ -332,18 +335,22 @@ echo "0 3 * * * root certbot renew --quiet" | sudo tee /etc/cron.d/certbot-renew
 
 ## TROUBLESHOOTING
 
+### "password authentication failed" when running seed or psql
+The password contains a special character (`$`) that must be escaped in the `.env` file.
+Change `$` to `\$` in the `DATABASE_URL` value.
+
 ### Backend won't start
 ```bash
 pm2 logs infosec-api --lines 50
 # Common causes:
-# - Wrong password in DATABASE_URL
-# - JWT_SECRET not set or too short
+# - Wrong password in DATABASE_URL (escape $ as \$)
+# - JWT_SECRET not set
 # - Port 4000 already in use: sudo lsof -i :4000
 ```
 
 ### "relation does not exist" error
+One or more schema files were not loaded. Re-run all of them (safe to repeat):
 ```bash
-# One or more schema files were not loaded. Re-run all of them:
 cd /opt/infosec/infosec/backend
 psql -U infosec_user -d infosec_db -h localhost -f schema.sql
 psql -U infosec_user -d infosec_db -h localhost -f schema_v2.sql
@@ -354,26 +361,36 @@ psql -U infosec_user -d infosec_db -h localhost -f schema_cve_cache.sql
 psql -U infosec_user -d infosec_db -h localhost -f schema_gap_assessment.sql
 ```
 
+### Table count is less than 28
+Some schema files failed. Drop and recreate the database, then reload all schemas:
+```bash
+sudo -u postgres psql -c "DROP DATABASE IF EXISTS infosec_db;"
+sudo -u postgres psql -c "CREATE DATABASE infosec_db OWNER infosec_user;"
+sudo -u postgres psql -c "\c infosec_db" -c "GRANT ALL ON SCHEMA public TO infosec_user;"
+# Then run all 7 psql -f commands above
+```
+
+### NodeSource blocked (corporate network)
+Use the binary download method in Step 2 Option B instead.
+
+### PostgreSQL apt repo blocked (corporate network)
+Use `sudo apt install -y postgresql postgresql-contrib` — Ubuntu's default repo gives
+PostgreSQL 14 which is fully compatible.
+
 ### Scans fail immediately
 ```bash
-which nmap           # must return a path
+which nmap
 sudo setcap cap_net_raw,cap_net_admin+eip $(which nmap)
-nmap -v localhost    # test nmap works
 ```
 
 ### Frontend shows blank page
 ```bash
-# Check Nginx root path matches where the build actually is
 ls /opt/infosec/infosec/frontend/build/index.html   # must exist
 sudo nginx -t && sudo systemctl reload nginx
 ```
 
-### "permission denied" on port 80
-Nginx runs on port 80 which requires root — this is normal. PM2 / Node.js runs on port 4000 as a regular user and Nginx proxies to it.
-
 ### psql: connection refused
 ```bash
-sudo systemctl status postgresql
 sudo systemctl start postgresql
 ```
 
@@ -382,21 +399,11 @@ sudo systemctl start postgresql
 ## UPGRADING
 
 ```bash
-cd /opt/infosec
-git pull
-
-# Backend
-cd infosec/backend
-npm install
+cd /opt/infosec && git pull
+cd infosec/backend && npm install
 pm2 restart infosec-api
-
-# Frontend
-cd ../frontend
-npm install && npm run build
-
-# Apply any new schema files that appeared
-psql -U infosec_user -d infosec_db -h localhost -f backend/schema.sql
-# (repeat for any new schema_*.sql files in the release notes)
+cd ../frontend && npm install && npm run build
+# Apply any new schema_*.sql files mentioned in the release notes
 ```
 
 ---
@@ -404,12 +411,9 @@ psql -U infosec_user -d infosec_db -h localhost -f backend/schema.sql
 ## DAILY BACKUP
 
 ```bash
-# Manual
-pg_dump -U infosec_user -h localhost infosec_db > ~/backup_$(date +%Y%m%d).sql
-
-# Automated (runs at 03:00 every night)
-echo "0 3 * * * infosec_user pg_dump -U infosec_user -h localhost infosec_db > /opt/infosec/backups/db_\$(date +\%Y\%m\%d).sql" | sudo tee /etc/cron.d/infosec-backup
+# Automated backup at 03:00 every night
 sudo mkdir -p /opt/infosec/backups
+echo "0 3 * * * amsadmin pg_dump -U infosec_user -h localhost infosec_db > /opt/infosec/backups/db_\$(date +\%Y\%m\%d).sql" | sudo tee /etc/cron.d/infosec-backup
 ```
 
 ---
@@ -419,9 +423,9 @@ sudo mkdir -p /opt/infosec/backups
 - [ ] Changed default `admin` password after first login
 - [ ] Set a random 64-char `JWT_SECRET` in `.env`
 - [ ] Firewall enabled (`ufw status` shows active)
-- [ ] Ports 4000 and 5432 are blocked externally
-- [ ] HTTPS configured (Let's Encrypt or internal CA)
-- [ ] PostgreSQL allows only localhost connections (`pg_hba.conf`)
+- [ ] Ports 4000 and 5432 blocked externally
+- [ ] HTTPS configured
+- [ ] PostgreSQL allows only localhost (`pg_hba.conf`)
 - [ ] Daily DB backups configured
 
 ---
