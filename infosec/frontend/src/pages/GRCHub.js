@@ -499,7 +499,17 @@ function DocumentsTab({ user }) {
                 </td>
                 <td style={td}>
                   {d.stored_name
-                    ? <a href={`/api/grc/documents/${d.id}/download`} style={{ color:'var(--accent)', textDecoration:'none', fontSize:12 }}>⬇ {fmtBytes(d.file_size)}</a>
+                    ? <button className="btn btn-secondary btn-sm" style={{ fontSize:12 }} onClick={async () => {
+                        try {
+                          const resp = await api.get(`/grc/documents/${d.id}/download`, { responseType: 'blob' });
+                          const url  = URL.createObjectURL(resp.data);
+                          const a    = document.createElement('a');
+                          a.href     = url;
+                          a.download = d.original_name || 'document';
+                          a.click();
+                          URL.revokeObjectURL(url);
+                        } catch { alert('Download failed'); }
+                      }}>⬇ {fmtBytes(d.file_size)}</button>
                     : <span style={{ color:'var(--text3)', fontSize:12 }}>No file</span>}
                 </td>
                 <td style={td}>
