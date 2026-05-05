@@ -123,7 +123,7 @@ body { font-family: 'Inter', sans-serif; background: var(--bg); color: var(--tex
 .brand-icon { font-size: 22px; }
 .brand-name { font-size: 15px; font-weight: 600; color: var(--text); }
 .brand-sub  { font-size: 11px; color: var(--text3); }
-.sidebar-nav { flex: 1; padding: 12px 8px; display: flex; flex-direction: column; gap: 2px; }
+.sidebar-nav { flex: 1; padding: 12px 8px; display: flex; flex-direction: column; gap: 2px; overflow-y: auto; }
 .nav-item { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-radius: var(--radius); color: var(--text2); text-decoration: none; font-size: 13px; transition: all 0.15s; }
 .nav-item:hover { background: var(--bg3); color: var(--text); }
 .nav-item.active { background: rgba(31,111,235,0.15); color: var(--accent-h); }
