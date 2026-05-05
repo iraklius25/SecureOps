@@ -83,7 +83,8 @@ EOF
 ### Avoid repeated password prompts (recommended)
 
 ```bash
-echo "localhost:5432:infosec_db:infosec_user:CHANGE_ME_STRONG_PASSWORD" > ~/.pgpass
+# Use single quotes — double quotes would expand $ in the password
+echo 'localhost:5432:infosec_db:infosec_user:CHANGE_ME_STRONG_PASSWORD' > ~/.pgpass
 chmod 600 ~/.pgpass
 ```
 
@@ -337,8 +338,18 @@ echo "0 3 * * * root certbot renew --quiet" | sudo tee /etc/cron.d/certbot-renew
 ## TROUBLESHOOTING
 
 ### "password authentication failed" when running seed or psql
-The password contains a special character (`$`) that must be escaped in the `.env` file.
-Change `$` to `\$` in the `DATABASE_URL` value.
+**Cause A — special character in password:** The password contains `$` which must be escaped in `.env`.
+Change `$` to `\$` in the `DATABASE_URL` value (e.g. `S3cur30ps$2026` → `S3cur30ps\$2026`).
+
+**Cause B — re-running setup on an existing install:** If `CREATE USER` printed `ERROR: role "infosec_user" already exists`, the `WITH PASSWORD` clause was skipped and the role kept its old password. Fix by resetting it manually:
+```bash
+sudo -u postgres psql -c "ALTER USER infosec_user WITH PASSWORD 'YOUR_PASSWORD';"
+```
+Then rewrite `.pgpass` using **single quotes** to prevent shell expansion of `$`:
+```bash
+echo 'localhost:5432:infosec_db:infosec_user:YOUR_PASSWORD' > ~/.pgpass
+chmod 600 ~/.pgpass
+```
 
 ### Backend won't start
 ```bash
