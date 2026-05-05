@@ -256,6 +256,8 @@ function docIcon(name = '') {
 
 /* ─── Radar Chart ─────────────────────────────────────────── */
 function MaturityRadar({ data, fw, view }) {
+  const [popup, setPopup] = useState(null);
+
   let chartData;
   if (fw.type === 'flat') {
     chartData = fw.domains.map(d => ({ domain: d.short, score: data?.domains?.[d.id]?.score || 0, fullMark: 5 }));
@@ -273,17 +275,72 @@ function MaturityRadar({ data, fw, view }) {
     }));
   }
 
+  // Build label → description map from current fw/view
+  const tickMap = {};
+  if (fw.type === 'flat') {
+    fw.domains.forEach(d => { tickMap[d.short] = { name: d.name, desc: d.desc, color: '#3b82f6' }; });
+  } else if (view === 'annexa') {
+    fw.annexA.forEach(s => {
+      tickMap[s.short] = {
+        name: s.name, color: s.color,
+        desc: s.items.map(i => `${i.id}  ${i.name}`).join('\n'),
+      };
+    });
+  } else {
+    fw.sections.forEach(s => {
+      tickMap[s.short] = {
+        name: s.name, color: s.color,
+        desc: s.items.map(i => `${i.id}  ${i.name}`).join('\n'),
+      };
+    });
+  }
+
+  // Custom SVG tick — clickable
+  const customTick = ({ x, y, payload, textAnchor }) => {
+    const info  = tickMap[payload.value];
+    const active = popup?.label === payload.value;
+    return (
+      <text
+        x={x} y={y}
+        textAnchor={textAnchor}
+        fill={active ? '#60a5fa' : 'var(--text2)'}
+        fontSize={11}
+        fontWeight={active ? 700 : 500}
+        style={{ cursor: 'pointer', userSelect: 'none' }}
+        onClick={() => info && setPopup(active ? null : { label: payload.value, ...info })}
+      >
+        {payload.value}
+      </text>
+    );
+  };
+
   return (
     <div className="card" style={{ padding: 16 }}>
-      <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text2)', marginBottom: 8 }}>Maturity Radar</div>
+      <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text2)', marginBottom: 4 }}>
+        Maturity Radar
+        <span style={{ fontSize: 11, fontWeight: 400, color: 'var(--text3)', marginLeft: 8 }}>— click a label for details</span>
+      </div>
       <ResponsiveContainer width="100%" height={260}>
         <RadarChart data={chartData} margin={{ top: 10, right: 30, bottom: 10, left: 30 }}>
           <PolarGrid stroke="var(--border)" />
-          <PolarAngleAxis dataKey="domain" tick={{ fill: 'var(--text2)', fontSize: 11 }} />
+          <PolarAngleAxis dataKey="domain" tick={customTick} />
           <PolarRadiusAxis angle={90} domain={[0, 5]} tickCount={6} tick={{ fill: 'var(--text3)', fontSize: 9 }} />
           <Radar name="Maturity" dataKey="score" stroke="#3b82f6" fill="#3b82f6" fillOpacity={0.25} dot={{ r: 3, fill: '#3b82f6' }} />
         </RadarChart>
       </ResponsiveContainer>
+      {popup && (
+        <div style={{
+          marginTop: 10, padding: '10px 14px', background: 'var(--bg3)',
+          borderRadius: 8, border: '1px solid var(--border)',
+          borderLeft: `3px solid ${popup.color || '#3b82f6'}`,
+        }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 6 }}>
+            <div style={{ fontSize: 13, fontWeight: 700, color: popup.color || '#3b82f6' }}>{popup.name}</div>
+            <button onClick={() => setPopup(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text3)', fontSize: 18, lineHeight: 1, padding: 0 }}>×</button>
+          </div>
+          <div style={{ fontSize: 12, color: 'var(--text2)', whiteSpace: 'pre-line', lineHeight: 1.7 }}>{popup.desc}</div>
+        </div>
+      )}
     </div>
   );
 }

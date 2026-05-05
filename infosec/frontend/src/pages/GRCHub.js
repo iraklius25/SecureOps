@@ -259,15 +259,21 @@ function ProgramsTab({ user }) {
 /* ── Documents Tab ────────────────────────────────────────────── */
 
 function DocumentsTab({ user }) {
-  const [docs,     setDocs]     = useState([]);
-  const [programs, setPrograms] = useState([]);
-  const [filter,   setFilter]   = useState({ category:'', status:'', search:'' });
-  const [showForm, setShowForm] = useState(false);
-  const [form,     setForm]     = useState({ program_id:'', title:'', category:'policy', doc_version:'1.0', status:'draft', owner:'', review_date:'', description:'' });
-  const [file,     setFile]     = useState(null);
-  const [err,      setErr]      = useState('');
-  const [busy,     setBusy]     = useState(false);
-  const fileRef = useRef();
+  const [docs,       setDocs]       = useState([]);
+  const [programs,   setPrograms]   = useState([]);
+  const [filter,     setFilter]     = useState({ category:'', status:'', search:'' });
+  const [showForm,   setShowForm]   = useState(false);
+  const [form,       setForm]       = useState({ program_id:'', title:'', category:'policy', doc_version:'1.0', status:'draft', owner:'', review_date:'', description:'' });
+  const [file,       setFile]       = useState(null);
+  const [err,        setErr]        = useState('');
+  const [busy,       setBusy]       = useState(false);
+  const [editingDoc, setEditingDoc] = useState(null);
+  const [editForm,   setEditForm]   = useState({});
+  const [editFile,   setEditFile]   = useState(null);
+  const [editErr,    setEditErr]    = useState('');
+  const [editBusy,   setEditBusy]   = useState(false);
+  const fileRef     = useRef();
+  const editFileRef = useRef();
   const canEdit = ['admin','analyst'].includes(user?.role);
 
   const load = async () => {
@@ -307,12 +313,92 @@ function DocumentsTab({ user }) {
     try { await api.delete(`/grc/documents/${id}`); load(); } catch {}
   };
 
+  const startEdit = d => {
+    setEditingDoc(d);
+    setEditForm({ title: d.title, category: d.category, doc_version: d.doc_version, status: d.status, owner: d.owner||'', review_date: d.review_date?.slice(0,10)||'', description: d.description||'' });
+    setEditFile(null); setEditErr('');
+    setShowForm(false);
+  };
+
+  const submitEdit = async e => {
+    e.preventDefault(); setEditErr(''); setEditBusy(true);
+    try {
+      const fd = new FormData();
+      Object.entries(editForm).forEach(([k, v]) => fd.append(k, v || ''));
+      if (editFile) fd.append('file', editFile);
+      await api.put(`/grc/documents/${editingDoc.id}`, fd, { headers:{ 'Content-Type':'multipart/form-data' } });
+      setEditingDoc(null); setEditFile(null); load();
+    } catch (ex) { setEditErr(ex.response?.data?.error || 'Save failed'); }
+    finally { setEditBusy(false); }
+  };
+
+  const setEF = k => e => setEditForm(p => ({ ...p, [k]: e.target.value }));
+
   return (
     <div>
       <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:16 }}>
         <h2 style={{ fontSize:18, fontWeight:700, margin:0 }}>Document Library</h2>
-        {canEdit && <button style={btn('primary')} onClick={() => setShowForm(s => !s)}>+ Add Document</button>}
+        {canEdit && <button style={btn('primary')} onClick={() => { setShowForm(s => !s); setEditingDoc(null); }}>+ Add Document</button>}
       </div>
+
+      {/* Edit document panel */}
+      {editingDoc && canEdit && (
+        <div style={{ ...card, marginBottom:20, borderLeft:'3px solid var(--accent)' }}>
+          <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:14 }}>
+            <h3 style={{ fontSize:15, fontWeight:700, margin:0 }}>Edit Document</h3>
+            <button style={btn()} onClick={() => setEditingDoc(null)}>✕ Cancel</button>
+          </div>
+          <form onSubmit={submitEdit} style={{ display:'flex', flexDirection:'column', gap:12 }}>
+            {editErr && <div style={{ color:'#ef4444', fontSize:13 }}>{editErr}</div>}
+            <div style={{ display:'grid', gridTemplateColumns:'2fr 1fr 1fr', gap:12 }}>
+              <div className="form-group">
+                <label>Title *</label>
+                <input style={inp} value={editForm.title||''} onChange={setEF('title')} required />
+              </div>
+              <div className="form-group">
+                <label>Category</label>
+                <select style={sel} value={editForm.category||'policy'} onChange={setEF('category')}>
+                  {DOC_CATS.map(c => <option key={c} value={c}>{cap(c)}</option>)}
+                </select>
+              </div>
+              <div className="form-group">
+                <label>Version</label>
+                <input style={inp} value={editForm.doc_version||''} onChange={setEF('doc_version')} placeholder="1.0" />
+              </div>
+            </div>
+            <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:12 }}>
+              <div className="form-group">
+                <label>Status</label>
+                <select style={sel} value={editForm.status||'draft'} onChange={setEF('status')}>
+                  {['draft','review','approved','published','retired'].map(s => <option key={s} value={s}>{cap(s)}</option>)}
+                </select>
+              </div>
+              <div className="form-group">
+                <label>Owner</label>
+                <input style={inp} value={editForm.owner||''} onChange={setEF('owner')} placeholder="Name / team" />
+              </div>
+              <div className="form-group">
+                <label>Review Date</label>
+                <input type="date" style={inp} value={editForm.review_date||''} onChange={setEF('review_date')} />
+              </div>
+            </div>
+            <div className="form-group">
+              <label>Description</label>
+              <textarea style={{ ...inp, height:52, resize:'vertical' }} value={editForm.description||''} onChange={setEF('description')} />
+            </div>
+            <div className="form-group">
+              <label>
+                Replace File <span style={{ fontWeight:400, color:'var(--text3)', fontSize:11 }}>(leave blank to keep existing {editingDoc.original_name ? `"${editingDoc.original_name}"` : 'file'})</span>
+              </label>
+              <input ref={editFileRef} type="file" style={{ fontSize:13, color:'var(--text1)' }} onChange={e => setEditFile(e.target.files[0])} />
+            </div>
+            <div style={{ display:'flex', gap:8, justifyContent:'flex-end' }}>
+              <button type="button" style={btn()} onClick={() => setEditingDoc(null)}>Cancel</button>
+              <button type="submit" style={btn('primary')} disabled={editBusy}>{editBusy ? 'Saving…' : 'Save Changes'}</button>
+            </div>
+          </form>
+        </div>
+      )}
 
       {showForm && canEdit && (
         <div style={{ ...card, marginBottom:20 }}>
@@ -390,7 +476,7 @@ function DocumentsTab({ user }) {
       <div style={{ overflowX:'auto' }}>
         <table style={tbl}>
           <thead>
-            <tr>{['Title','Category','Ver.','Status','Owner','Review Date','File',''].map(h => <th key={h} style={th}>{h}</th>)}</tr>
+            <tr>{['Title','Category','Ver.','Status','Owner','Review Date','File','Actions'].map(h => <th key={h} style={th}>{h}</th>)}</tr>
           </thead>
           <tbody>
             {filtered.length === 0 && (
@@ -417,7 +503,12 @@ function DocumentsTab({ user }) {
                     : <span style={{ color:'var(--text3)', fontSize:12 }}>No file</span>}
                 </td>
                 <td style={td}>
-                  {canEdit && <button style={{ ...btn('danger'), padding:'4px 10px', fontSize:12 }} onClick={() => del(d.id)}>Delete</button>}
+                  {canEdit && (
+                    <div style={{ display:'flex', gap:6 }}>
+                      <button style={{ ...btn(), padding:'4px 10px', fontSize:12 }} onClick={() => startEdit(d)}>Edit</button>
+                      <button style={{ ...btn('danger'), padding:'4px 10px', fontSize:12 }} onClick={() => del(d.id)}>Delete</button>
+                    </div>
+                  )}
                 </td>
               </tr>
             ))}

@@ -208,12 +208,33 @@ router.post('/documents', auth, requireRole('admin', 'analyst'), upload.single('
   }
 });
 
-router.put('/documents/:id', auth, requireRole('admin', 'analyst'), async (req, res) => {
+router.put('/documents/:id', auth, requireRole('admin', 'analyst'), upload.single('file'), async (req, res) => {
   const { title, category, doc_version, status, owner, review_date, framework_links, tags, description } = req.body;
   try {
     let links = [];
     try { links = JSON.parse(framework_links || '[]'); } catch { links = []; }
     const tagArr = tags ? tags.split(',').map(t => t.trim()).filter(Boolean) : [];
+
+    if (req.file) {
+      // delete old file from disk before replacing
+      const old = await db.query('SELECT stored_name FROM grc_documents WHERE id=$1', [req.params.id]);
+      if (old.rows.length && old.rows[0].stored_name) {
+        fs.unlink(path.join(UPLOAD_DIR, old.rows[0].stored_name), () => {});
+      }
+      const r = await db.query(
+        `UPDATE grc_documents SET title=$1, category=$2, doc_version=$3, status=$4, owner=$5,
+         review_date=$6, framework_links=$7, tags=$8, description=$9,
+         original_name=$10, stored_name=$11, mimetype=$12, file_size=$13, updated_at=NOW()
+         WHERE id=$14 RETURNING *`,
+        [title, category, doc_version, status, owner || '', review_date || null,
+         links, tagArr, description || '',
+         req.file.originalname, req.file.filename, req.file.mimetype, req.file.size,
+         req.params.id]
+      );
+      if (!r.rows.length) return res.status(404).json({ error: 'Not found' });
+      return res.json(r.rows[0]);
+    }
+
     const r = await db.query(
       `UPDATE grc_documents SET title=$1, category=$2, doc_version=$3, status=$4, owner=$5,
        review_date=$6, framework_links=$7, tags=$8, description=$9, updated_at=NOW() WHERE id=$10 RETURNING *`,
@@ -222,7 +243,10 @@ router.put('/documents/:id', auth, requireRole('admin', 'analyst'), async (req, 
     );
     if (!r.rows.length) return res.status(404).json({ error: 'Not found' });
     res.json(r.rows[0]);
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) {
+    if (req.file) fs.unlink(path.join(UPLOAD_DIR, req.file.filename), () => {});
+    res.status(500).json({ error: e.message });
+  }
 });
 
 router.delete('/documents/:id', auth, requireRole('admin', 'analyst'), async (req, res) => {
