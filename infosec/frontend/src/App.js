@@ -21,6 +21,7 @@ import Topology       from './pages/Topology';
 import Approvals             from './pages/Approvals';
 import ForceChangePassword   from './pages/ForceChangePassword';
 import MaturityAssessment    from './pages/MaturityAssessment';
+import GRCHub               from './pages/GRCHub';
 import './App.css';
 
 export const AuthContext = createContext(null);
@@ -251,6 +252,7 @@ const NAV = [
   { path: '/reports',        label: 'Reports',         icon: '📊', roles: ['admin','analyst','auditor'] },
   { path: '/compliance',     label: 'Compliance',      icon: '✅', roles: ['admin','analyst','auditor'] },
   { path: '/maturity',      label: 'Maturity',        icon: '📈', roles: ['admin','analyst','auditor'] },
+  { path: '/grc',           label: 'GRC Hub',         icon: '🏛', roles: ['admin','analyst','auditor'] },
   { path: '/threat',         label: 'Threat Intel',    icon: '🔥', roles: ['admin','analyst','auditor'] },
   { path: '/patches',        label: 'Patch Tracker',   icon: '🩹', roles: ['admin','analyst','auditor'] },
   { path: '/topology',       label: 'Network Map',     icon: '🗺', roles: ['admin','analyst','auditor','viewer'] },
@@ -493,6 +495,7 @@ export default function App() {
           <Route path="/reports" element={<PrivateRoute><Reports /></PrivateRoute>} />
           <Route path="/compliance" element={<PrivateRoute roles={['admin','analyst','auditor']}><Compliance /></PrivateRoute>} />
           <Route path="/maturity"   element={<PrivateRoute roles={['admin','analyst','auditor']}><MaturityAssessment /></PrivateRoute>} />
+          <Route path="/grc"        element={<PrivateRoute roles={['admin','analyst','auditor']}><GRCHub /></PrivateRoute>} />
           <Route path="/threat" element={<PrivateRoute roles={['admin','analyst','auditor']}><ThreatIntel /></PrivateRoute>} />
           <Route path="/patches" element={<PrivateRoute roles={['admin','analyst','auditor']}><Patches /></PrivateRoute>} />
           <Route path="/topology" element={<PrivateRoute><Topology /></PrivateRoute>} />

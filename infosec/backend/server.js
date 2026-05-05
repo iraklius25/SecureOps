@@ -45,6 +45,7 @@ app.use('/api/approvals',      require('./routes/approvals'));
 app.use('/api/totp',           require('./routes/totp'));
 app.use('/api/evidence',       require('./routes/evidence'));
 app.use('/api/maturity',       require('./routes/maturity'));
+app.use('/api/grc',            require('./routes/grc'));
 
 // ── Static uploads ──────────────────────────────────────────────
 app.use('/uploads', require('express').static(require('path').join(__dirname, 'uploads')));
