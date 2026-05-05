@@ -11,7 +11,18 @@
       "Bash(netstat -tlnp)",
       "Read(//c/Program Files/**)",
       "Read(//c/Users/igigilashvili/AppData/Roaming/**)",
-      "Read(//c/Users/igigilashvili/AppData/Local/**)"
+      "Read(//c/Users/igigilashvili/AppData/Local/**)",
+      "Bash(git add *)",
+      "Bash(git commit -m ' *)",
+      "WebFetch(domain:raw.githubusercontent.com)",
+      "WebFetch(domain:github.com)",
+      "Bash(Get-ChildItem -Path \"C:\\\\Users\\\\igigilashvili\\\\Desktop\\\\files\\\\infosec-platform\\\\infosec\" -Recurse -Directory)",
+      "Bash(Select-Object -ExpandProperty FullName)",
+      "Bash(git push *)",
+      "Bash(git commit -m 'fix: remove organization name from ISO 42001 subtitle *)",
+      "Bash(git commit -m 'fix: make sidebar nav scrollable when zoomed in *)",
+      "Bash(npm install *)",
+      "PowerShell(Get-Command *)"
     ]
   }
 }

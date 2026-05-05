@@ -430,7 +430,7 @@ export function Risks() {
                   <tr>
                     <th>Score</th><th>Risk</th><th>Category</th>
                     <th>L</th><th>I</th><th>Level</th>
-                    <th>Treatment</th><th>Asset</th><th>Status</th><th>Controls</th>
+                    <th>AI Act</th><th>Treatment</th><th>Asset</th><th>Status</th><th>Controls</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -449,6 +449,15 @@ export function Risks() {
                       <td className="mono">{r.likelihood}</td>
                       <td className="mono">{r.impact}</td>
                       <td><span className={`badge badge-${r.risk_level}`}>{r.risk_level}</span></td>
+                      <td>
+                        {r.eu_ai_act_tier ? (
+                          <span style={{ fontSize:11, fontWeight:600, padding:'2px 7px', borderRadius:10, whiteSpace:'nowrap',
+                            background: r.eu_ai_act_tier==='unacceptable'?'#ef444420':r.eu_ai_act_tier==='high'?'#f9731620':r.eu_ai_act_tier==='limited'?'#f59e0b20':'#10b98120',
+                            color: r.eu_ai_act_tier==='unacceptable'?'#ef4444':r.eu_ai_act_tier==='high'?'#f97316':r.eu_ai_act_tier==='limited'?'#f59e0b':'#10b981' }}>
+                            {r.eu_ai_act_tier}
+                          </span>
+                        ) : <span style={{ color:'var(--text3)', fontSize:12 }}>—</span>}
+                      </td>
                       <td>
                         <select
                           value={r.treatment}
@@ -525,6 +534,16 @@ export function Risks() {
                   <label>Treatment</label>
                   <select value={form.treatment} onChange={set('treatment')}>
                     {TREAT.map(t => <option key={t}>{t}</option>)}
+                  </select>
+                </div>
+                <div className="form-group">
+                  <label>EU AI Act Tier <span style={{ fontWeight:400, color:'var(--text3)', fontSize:11 }}>(if this is an AI-related risk)</span></label>
+                  <select value={form.eu_ai_act_tier || ''} onChange={set('eu_ai_act_tier')}>
+                    <option value="">— Not applicable —</option>
+                    <option value="unacceptable">Unacceptable risk</option>
+                    <option value="high">High risk</option>
+                    <option value="limited">Limited risk</option>
+                    <option value="minimal">Minimal risk</option>
                   </select>
                 </div>
               </div>

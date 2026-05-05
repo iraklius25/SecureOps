@@ -334,6 +334,13 @@ function DocumentsTab({ user }) {
 
   const setEF = k => e => setEditForm(p => ({ ...p, [k]: e.target.value }));
 
+  const approve = async (id) => {
+    try {
+      await api.post(`/grc/documents/${id}/approve`);
+      load();
+    } catch (ex) { alert(ex.response?.data?.error || 'Approve failed'); }
+  };
+
   return (
     <div>
       <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:16 }}>
@@ -487,6 +494,7 @@ function DocumentsTab({ user }) {
                 <td style={td}>
                   <div style={{ fontWeight:600 }}>{d.title}</div>
                   {d.description && <div style={{ fontSize:11, color:'var(--text3)', marginTop:2 }}>{d.description.slice(0,80)}{d.description.length>80?'…':''}</div>}
+                  {d.approved_at && <div style={{ fontSize:10, color:'#10b981', marginTop:2 }}>✓ Approved {fmtDate(d.approved_at)} by {d.approved_by_username||'—'}</div>}
                 </td>
                 <td style={td}><span style={badge('#6b7280')}>{d.category}</span></td>
                 <td style={td}><span style={{ fontSize:12, color:'var(--text3)' }}>v{d.doc_version}</span></td>
@@ -515,6 +523,7 @@ function DocumentsTab({ user }) {
                 <td style={td}>
                   {canEdit && (
                     <div style={{ display:'flex', gap:6 }}>
+                      {d.status !== 'approved' && <button style={{ ...btn(), padding:'4px 10px', fontSize:12, color:'#10b981', border:'1px solid #10b981' }} onClick={() => approve(d.id)}>✓ Approve</button>}
                       <button style={{ ...btn(), padding:'4px 10px', fontSize:12 }} onClick={() => startEdit(d)}>Edit</button>
                       <button style={{ ...btn('danger'), padding:'4px 10px', fontSize:12 }} onClick={() => del(d.id)}>Delete</button>
                     </div>
@@ -711,15 +720,99 @@ function ControlsTab({ user }) {
   );
 }
 
+/* ── NC Detail Panel ──────────────────────────────────────────── */
+
+const NC_TYPE_COLORS = { major_nc:'#ef4444', minor_nc:'#f97316', observation:'#3b82f6', action:'#6b7280' };
+
+function NCDetail({ task, canEdit, onUpdated }) {
+  const [ncFields, setNcFields] = useState({
+    nc_type:               task.nc_type              || 'action',
+    source:                task.source               || 'manual',
+    root_cause:            task.root_cause            || '',
+    containment_action:    task.containment_action    || '',
+    corrective_action:     task.corrective_action     || '',
+    verification_evidence: task.verification_evidence || '',
+    verification_date:     task.verification_date     ? task.verification_date.slice(0,10) : '',
+    recurrence_check_date: task.recurrence_check_date ? task.recurrence_check_date.slice(0,10) : '',
+  });
+  const [saving, setSaving] = useState(false);
+  const [msg,    setMsg]    = useState('');
+
+  const setF = k => e => setNcFields(p => ({ ...p, [k]: e.target.value }));
+  const setC = k => e => setNcFields(p => ({ ...p, [k]: e.target.checked }));
+
+  const save = async () => {
+    setSaving(true); setMsg('');
+    try {
+      await api.put(`/grc/tasks/${task.id}`, { ...task, ...ncFields });
+      setMsg('Saved'); onUpdated();
+      setTimeout(() => setMsg(''), 2000);
+    } catch (ex) { setMsg(ex.response?.data?.error || 'Save failed'); }
+    finally { setSaving(false); }
+  };
+
+  const ncTypeColor = NC_TYPE_COLORS[ncFields.nc_type] || '#6b7280';
+
+  return (
+    <div style={{ padding:'12px 0', fontSize:13 }}>
+      <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:12 }}>
+        <span style={{ fontWeight:700, fontSize:12, color:'var(--text2)' }}>NC / Action Detail</span>
+        <span style={{ ...badge(ncTypeColor), fontSize:11 }}>{humanize(ncFields.nc_type)}</span>
+        {msg && <span style={{ fontSize:12, color: msg==='Saved'?'#10b981':'#ef4444', fontWeight:600 }}>{msg}</span>}
+        {canEdit && <button style={{ ...btn('primary'), padding:'4px 12px', fontSize:12, marginLeft:'auto' }} onClick={save} disabled={saving}>{saving?'Saving…':'Save NC fields'}</button>}
+      </div>
+      <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10 }}>
+        <div className="form-group">
+          <label style={{ fontSize:11, color:'var(--text3)', display:'block', marginBottom:3 }}>NC Type</label>
+          <select style={{ ...sel, fontSize:12, width:'100%' }} value={ncFields.nc_type} onChange={setF('nc_type')} disabled={!canEdit}>
+            {[['action','Action'],['major_nc','Major NC'],['minor_nc','Minor NC'],['observation','Observation']].map(([v,l]) => <option key={v} value={v}>{l}</option>)}
+          </select>
+        </div>
+        <div className="form-group">
+          <label style={{ fontSize:11, color:'var(--text3)', display:'block', marginBottom:3 }}>Source</label>
+          <select style={{ ...sel, fontSize:12, width:'100%' }} value={ncFields.source} onChange={setF('source')} disabled={!canEdit}>
+            {[['manual','Manual'],['audit','Audit'],['incident','Incident'],['management_review','Management Review']].map(([v,l]) => <option key={v} value={v}>{l}</option>)}
+          </select>
+        </div>
+        <div className="form-group">
+          <label style={{ fontSize:11, color:'var(--text3)', display:'block', marginBottom:3 }}>Root Cause</label>
+          <textarea style={{ ...inp, fontSize:12, height:60, resize:'vertical' }} value={ncFields.root_cause} onChange={setF('root_cause')} disabled={!canEdit} placeholder="Describe root cause…" />
+        </div>
+        <div className="form-group">
+          <label style={{ fontSize:11, color:'var(--text3)', display:'block', marginBottom:3 }}>Containment Action</label>
+          <textarea style={{ ...inp, fontSize:12, height:60, resize:'vertical' }} value={ncFields.containment_action} onChange={setF('containment_action')} disabled={!canEdit} placeholder="Immediate containment steps…" />
+        </div>
+        <div className="form-group">
+          <label style={{ fontSize:11, color:'var(--text3)', display:'block', marginBottom:3 }}>Corrective Action</label>
+          <textarea style={{ ...inp, fontSize:12, height:60, resize:'vertical' }} value={ncFields.corrective_action} onChange={setF('corrective_action')} disabled={!canEdit} placeholder="Long-term corrective action…" />
+        </div>
+        <div className="form-group">
+          <label style={{ fontSize:11, color:'var(--text3)', display:'block', marginBottom:3 }}>Verification Evidence</label>
+          <textarea style={{ ...inp, fontSize:12, height:60, resize:'vertical' }} value={ncFields.verification_evidence} onChange={setF('verification_evidence')} disabled={!canEdit} placeholder="Evidence of effectiveness…" />
+        </div>
+        <div className="form-group">
+          <label style={{ fontSize:11, color:'var(--text3)', display:'block', marginBottom:3 }}>Verification Date</label>
+          <input type="date" style={{ ...inp, fontSize:12 }} value={ncFields.verification_date} onChange={setF('verification_date')} disabled={!canEdit} />
+        </div>
+        <div className="form-group">
+          <label style={{ fontSize:11, color:'var(--text3)', display:'block', marginBottom:3 }}>Recurrence Check Date</label>
+          <input type="date" style={{ ...inp, fontSize:12 }} value={ncFields.recurrence_check_date} onChange={setF('recurrence_check_date')} disabled={!canEdit} />
+        </div>
+      </div>
+    </div>
+  );
+}
+
 /* ── Tasks Tab ────────────────────────────────────────────────── */
 
 function TasksTab({ user }) {
-  const [tasks,    setTasks]    = useState([]);
-  const [programs, setPrograms] = useState([]);
-  const [filter,   setFilter]   = useState({ status:'', priority:'', framework:'', search:'' });
-  const [showForm, setShowForm] = useState(false);
-  const [form,     setForm]     = useState({ program_id:'', title:'', description:'', owner:'', due_date:'', priority:'medium', status:'open', framework:'', clause_ref:'' });
-  const [err,      setErr]      = useState('');
+  const [tasks,        setTasks]        = useState([]);
+  const [programs,     setPrograms]     = useState([]);
+  const [filter,       setFilter]       = useState({ status:'', priority:'', framework:'', search:'' });
+  const [showForm,     setShowForm]     = useState(false);
+  const [form,         setForm]         = useState({ program_id:'', title:'', description:'', owner:'', due_date:'', priority:'medium', status:'open', framework:'', clause_ref:'' });
+  const [err,          setErr]          = useState('');
+  const [expandedTask, setExpandedTask] = useState(null);
   const canEdit = ['admin','analyst'].includes(user?.role);
 
   const load = async () => {
@@ -869,38 +962,53 @@ function TasksTab({ user }) {
             {filtered.map(t => {
               const over = t.status !== 'completed' && t.status !== 'cancelled' && isOverdue(t.due_date);
               return (
-                <tr key={t.id} style={{ opacity: t.status==='cancelled' ? 0.5 : 1 }}>
-                  <td style={td}><span style={badge(PC[t.priority]||'#6b7280')}>{t.priority}</span></td>
-                  <td style={td}>
-                    <div style={{ fontWeight:500, textDecoration: t.status==='completed'?'line-through':'' }}>{t.title}</div>
-                    {t.description && <div style={{ fontSize:11, color:'var(--text3)' }}>{t.description.slice(0,60)}{t.description.length>60?'…':''}</div>}
-                  </td>
-                  <td style={td}>{t.owner||'—'}</td>
-                  <td style={td}>
-                    {t.framework
-                      ? <span style={badge((FRAMEWORKS.find(f=>f.id===t.framework)||{color:'#6b7280'}).color)}>{t.framework}</span>
-                      : '—'}
-                  </td>
-                  <td style={td}><code style={{ fontSize:11, color:'var(--text3)' }}>{t.clause_ref||'—'}</code></td>
-                  <td style={td}>
-                    <span style={{ color: over?'#ef4444':'var(--text1)', fontSize:13, fontWeight: over?700:400 }}>
-                      {fmtDate(t.due_date)}{over?' ⚠':''}
-                    </span>
-                  </td>
-                  <td style={td}>
-                    {canEdit ? (
-                      <select value={t.status} onChange={e => changeStatus(t, e.target.value)}
-                        style={{ ...sel, padding:'3px 8px', fontSize:12, color: TC[t.status] }}>
-                        {TASK_STATUSES.map(s => <option key={s} value={s}>{humanize(s)}</option>)}
-                      </select>
-                    ) : (
-                      <span style={badge(TC[t.status]||'#6b7280')}>{humanize(t.status)}</span>
-                    )}
-                  </td>
-                  <td style={td}>
-                    {canEdit && <button style={{ ...btn('danger'), padding:'4px 10px', fontSize:12 }} onClick={() => del(t.id)}>Del</button>}
-                  </td>
-                </tr>
+                <React.Fragment key={t.id}>
+                  <tr style={{ opacity: t.status==='cancelled' ? 0.5 : 1 }}>
+                    <td style={td}><span style={badge(PC[t.priority]||'#6b7280')}>{t.priority}</span></td>
+                    <td style={{ ...td, cursor:'pointer' }} onClick={() => setExpandedTask(prev => prev === t.id ? null : t.id)}>
+                      <div style={{ display:'flex', alignItems:'center', gap:6 }}>
+                        <div>
+                          <div style={{ fontWeight:500, textDecoration: t.status==='completed'?'line-through':'' }}>{t.title}</div>
+                          {t.description && <div style={{ fontSize:11, color:'var(--text3)' }}>{t.description.slice(0,60)}{t.description.length>60?'…':''}</div>}
+                        </div>
+                        {t.nc_type && t.nc_type !== 'action' && <span style={{ ...badge(NC_TYPE_COLORS[t.nc_type]||'#6b7280'), fontSize:10 }}>{humanize(t.nc_type)}</span>}
+                        <span style={{ fontSize:11, color:'var(--text3)', marginLeft:'auto', flexShrink:0 }}>{expandedTask===t.id?'▲':'▼'}</span>
+                      </div>
+                    </td>
+                    <td style={td}>{t.owner||'—'}</td>
+                    <td style={td}>
+                      {t.framework
+                        ? <span style={badge((FRAMEWORKS.find(f=>f.id===t.framework)||{color:'#6b7280'}).color)}>{t.framework}</span>
+                        : '—'}
+                    </td>
+                    <td style={td}><code style={{ fontSize:11, color:'var(--text3)' }}>{t.clause_ref||'—'}</code></td>
+                    <td style={td}>
+                      <span style={{ color: over?'#ef4444':'var(--text1)', fontSize:13, fontWeight: over?700:400 }}>
+                        {fmtDate(t.due_date)}{over?' ⚠':''}
+                      </span>
+                    </td>
+                    <td style={td}>
+                      {canEdit ? (
+                        <select value={t.status} onChange={e => changeStatus(t, e.target.value)}
+                          style={{ ...sel, padding:'3px 8px', fontSize:12, color: TC[t.status] }}>
+                          {TASK_STATUSES.map(s => <option key={s} value={s}>{humanize(s)}</option>)}
+                        </select>
+                      ) : (
+                        <span style={badge(TC[t.status]||'#6b7280')}>{humanize(t.status)}</span>
+                      )}
+                    </td>
+                    <td style={td}>
+                      {canEdit && <button style={{ ...btn('danger'), padding:'4px 10px', fontSize:12 }} onClick={() => del(t.id)}>Del</button>}
+                    </td>
+                  </tr>
+                  {expandedTask === t.id && (
+                    <tr>
+                      <td colSpan={8} style={{ padding:'0 12px 12px', background:'var(--surface3)' }}>
+                        <NCDetail task={t} canEdit={canEdit} onUpdated={load} />
+                      </td>
+                    </tr>
+                  )}
+                </React.Fragment>
               );
             })}
           </tbody>
@@ -912,12 +1020,23 @@ function TasksTab({ user }) {
 
 /* ── Reviews Tab ──────────────────────────────────────────────── */
 
+const AGENDA_ITEMS = [
+  { key:'prev_actions',    label:'Status of actions from previous reviews' },
+  { key:'context_changes', label:'Changes in external/internal context' },
+  { key:'risk_status',     label:'AI risk register status and trends' },
+  { key:'audit_results',   label:'Results of internal audits' },
+  { key:'kpi_performance', label:'AIMS objectives and KPI performance' },
+  { key:'incidents_ncs',   label:'Incidents and nonconformities' },
+  { key:'improvements',    label:'Opportunities for improvement' },
+  { key:'resources',       label:'Resource adequacy' },
+];
+
 function ReviewsTab({ user }) {
   const [reviews,  setReviews]  = useState([]);
   const [programs, setPrograms] = useState([]);
   const [showForm, setShowForm] = useState(false);
   const [editing,  setEditing]  = useState(null);
-  const blank = { program_id:'', review_date:'', review_type:'management_review', title:'', chair:'', status:'planned', minutes_text:'', approved_by:'' };
+  const blank = { program_id:'', review_date:'', review_type:'management_review', title:'', chair:'', status:'planned', minutes_text:'', approved_by:'', agenda_checklist:{} };
   const [form, setForm] = useState(blank);
   const [err,  setErr]  = useState('');
   const canEdit = ['admin','analyst'].includes(user?.role);
@@ -943,7 +1062,7 @@ function ReviewsTab({ user }) {
 
   const startEdit = r => {
     setEditing(r.id);
-    setForm({ ...r, review_date: r.review_date?.slice(0,10)||'' });
+    setForm({ ...r, review_date: r.review_date?.slice(0,10)||'', agenda_checklist: r.agenda_checklist || {} });
     setShowForm(true);
   };
 
@@ -1004,6 +1123,22 @@ function ReviewsTab({ user }) {
               </div>
             </div>
             <div className="form-group">
+              <label style={{ fontWeight:600 }}>ISO 42001 Clause 9.3 Mandatory Agenda Items</label>
+              <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:6, marginTop:6 }}>
+                {AGENDA_ITEMS.map(item => (
+                  <label key={item.key} style={{ display:'flex', alignItems:'center', gap:8, fontSize:12, color:'var(--text2)', cursor:'pointer', padding:'4px 6px', borderRadius:4, background:'var(--surface3)' }}>
+                    <input
+                      type="checkbox"
+                      checked={!!(form.agenda_checklist && form.agenda_checklist[item.key])}
+                      onChange={e => setForm(p => ({ ...p, agenda_checklist: { ...p.agenda_checklist, [item.key]: e.target.checked } }))}
+                      style={{ accentColor:'var(--accent)', flexShrink:0 }}
+                    />
+                    {item.label}
+                  </label>
+                ))}
+              </div>
+            </div>
+            <div className="form-group">
               <label>Minutes / Notes / Decisions</label>
               <textarea style={{ ...inp, height:110, resize:'vertical' }} value={form.minutes_text} onChange={setF('minutes_text')} placeholder="Record meeting outcomes, decisions, action items…" />
             </div>
@@ -1041,6 +1176,26 @@ function ReviewsTab({ user }) {
                   )}
                 </div>
               </div>
+              {r.agenda_checklist && (() => {
+                const covered = AGENDA_ITEMS.filter(i => r.agenda_checklist[i.key]).length;
+                const total   = AGENDA_ITEMS.length;
+                return (
+                  <div style={{ marginBottom:10 }}>
+                    <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:4 }}>
+                      <span style={{ fontSize:11, color:'var(--text3)', fontWeight:600 }}>Agenda Coverage</span>
+                      <span style={{ fontSize:12, fontWeight:700, color: covered===total?'#10b981':'var(--text2)' }}>{covered}/{total} items</span>
+                    </div>
+                    <div style={{ height:5, background:'var(--surface3)', borderRadius:3, overflow:'hidden', marginBottom:6 }}>
+                      <div style={{ height:'100%', width:`${(covered/total)*100}%`, background: covered===total?'#10b981':'#3b82f6', borderRadius:3, transition:'width 0.3s' }} />
+                    </div>
+                    <div style={{ display:'flex', flexWrap:'wrap', gap:4 }}>
+                      {AGENDA_ITEMS.map(item => (
+                        <span key={item.key} title={item.label} style={{ fontSize:14, lineHeight:1, opacity: r.agenda_checklist[item.key] ? 1 : 0.25 }}>✓</span>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })()}
               {r.minutes_text && (
                 <div style={{ fontSize:13, color:'var(--text2)', background:'var(--surface3)', borderRadius:6, padding:'10px 14px', whiteSpace:'pre-wrap', maxHeight:120, overflow:'auto', lineHeight:1.5 }}>
                   {r.minutes_text}
@@ -1434,6 +1589,362 @@ function RACITab({ user }) {
   );
 }
 
+/* ── Suppliers Tab ────────────────────────────────────────────── */
+
+const SUPPLIER_RISK_COLORS = { critical:'#ef4444', high:'#f97316', medium:'#f59e0b', low:'#10b981' };
+
+function SuppliersTab({ user }) {
+  const [suppliers, setSuppliers] = useState([]);
+  const [editing,   setEditing]   = useState(null);
+  const blankS = {
+    name:'', supplier_type:'vendor', contact_name:'', contact_email:'', website:'', country:'',
+    risk_rating:'low', status:'active', contract_start:'', contract_end:'',
+    data_processing_agreement:false, security_questionnaire_done:false,
+    services_provided:'', notes:'',
+  };
+  const [form, setForm] = useState(blankS);
+  const [err,  setErr]  = useState('');
+  const canEdit = ['admin','analyst'].includes(user?.role);
+
+  const load = async () => {
+    try { const r = await api.get('/suppliers'); setSuppliers(r.data); } catch {}
+  };
+  useEffect(() => { load(); }, []);
+
+  const setF  = k => e => setForm(p => ({ ...p, [k]: e.target.value }));
+  const setFB = k => e => setForm(p => ({ ...p, [k]: e.target.checked }));
+
+  const submit = async e => {
+    e.preventDefault(); setErr('');
+    try {
+      if (editing === 'new') await api.post('/suppliers', form);
+      else                   await api.put(`/suppliers/${editing}`, form);
+      setEditing(null); setForm(blankS); load();
+    } catch (ex) { setErr(ex.response?.data?.error || 'Error saving supplier'); }
+  };
+
+  const startEdit = s => {
+    setEditing(s.id);
+    setForm({ ...s, contract_start: s.contract_start?.slice(0,10)||'', contract_end: s.contract_end?.slice(0,10)||'' });
+  };
+
+  const del = async id => {
+    if (!window.confirm('Delete this supplier?')) return;
+    try { await api.delete(`/suppliers/${id}`); load(); } catch {}
+  };
+
+  return (
+    <div>
+      <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:16 }}>
+        <h2 style={{ fontSize:18, fontWeight:700, margin:0 }}>Supplier Register</h2>
+        {canEdit && <button style={btn('primary')} onClick={() => { setForm(blankS); setEditing('new'); }}>+ Add Supplier</button>}
+      </div>
+
+      {editing && canEdit && (
+        <div style={{ ...card, marginBottom:20 }}>
+          <h3 style={{ fontSize:15, fontWeight:700, margin:'0 0 14px' }}>{editing==='new'?'New Supplier':'Edit Supplier'}</h3>
+          <form onSubmit={submit} style={{ display:'flex', flexDirection:'column', gap:12 }}>
+            {err && <div style={{ color:'#ef4444', fontSize:13 }}>{err}</div>}
+            <div style={{ display:'grid', gridTemplateColumns:'2fr 1fr 1fr', gap:12 }}>
+              <div className="form-group">
+                <label>Name *</label>
+                <input style={inp} value={form.name} onChange={setF('name')} required placeholder="Supplier / vendor name" />
+              </div>
+              <div className="form-group">
+                <label>Type</label>
+                <select style={sel} value={form.supplier_type} onChange={setF('supplier_type')}>
+                  {[['vendor','Vendor'],['data_provider','Data Provider'],['infrastructure','Infrastructure'],['saas_ai','SaaS / AI'],['consultant','Consultant']].map(([v,l])=><option key={v} value={v}>{l}</option>)}
+                </select>
+              </div>
+              <div className="form-group">
+                <label>Risk Rating</label>
+                <select style={sel} value={form.risk_rating} onChange={setF('risk_rating')}>
+                  {['low','medium','high','critical'].map(r=><option key={r} value={r}>{cap(r)}</option>)}
+                </select>
+              </div>
+            </div>
+            <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr 1fr', gap:12 }}>
+              <div className="form-group">
+                <label>Contact Name</label>
+                <input style={inp} value={form.contact_name} onChange={setF('contact_name')} />
+              </div>
+              <div className="form-group">
+                <label>Contact Email</label>
+                <input type="email" style={inp} value={form.contact_email} onChange={setF('contact_email')} />
+              </div>
+              <div className="form-group">
+                <label>Website</label>
+                <input style={inp} value={form.website} onChange={setF('website')} placeholder="https://…" />
+              </div>
+              <div className="form-group">
+                <label>Country</label>
+                <input style={inp} value={form.country} onChange={setF('country')} />
+              </div>
+            </div>
+            <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:12 }}>
+              <div className="form-group">
+                <label>Status</label>
+                <select style={sel} value={form.status} onChange={setF('status')}>
+                  {[['active','Active'],['inactive','Inactive'],['under_review','Under Review']].map(([v,l])=><option key={v} value={v}>{l}</option>)}
+                </select>
+              </div>
+              <div className="form-group">
+                <label>Contract Start</label>
+                <input type="date" style={inp} value={form.contract_start} onChange={setF('contract_start')} />
+              </div>
+              <div className="form-group">
+                <label>Contract End</label>
+                <input type="date" style={inp} value={form.contract_end} onChange={setF('contract_end')} />
+              </div>
+            </div>
+            <div style={{ display:'flex', gap:24 }}>
+              <label style={{ display:'flex', alignItems:'center', gap:8, fontSize:13, cursor:'pointer' }}>
+                <input type="checkbox" checked={form.data_processing_agreement} onChange={setFB('data_processing_agreement')} style={{ accentColor:'var(--accent)' }} />
+                Data Processing Agreement signed
+              </label>
+              <label style={{ display:'flex', alignItems:'center', gap:8, fontSize:13, cursor:'pointer' }}>
+                <input type="checkbox" checked={form.security_questionnaire_done} onChange={setFB('security_questionnaire_done')} style={{ accentColor:'var(--accent)' }} />
+                Security questionnaire completed
+              </label>
+            </div>
+            <div className="form-group">
+              <label>Services Provided</label>
+              <textarea style={{ ...inp, height:56, resize:'vertical' }} value={form.services_provided} onChange={setF('services_provided')} />
+            </div>
+            <div className="form-group">
+              <label>Notes</label>
+              <textarea style={{ ...inp, height:48, resize:'vertical' }} value={form.notes} onChange={setF('notes')} />
+            </div>
+            <div style={{ display:'flex', gap:8, justifyContent:'flex-end' }}>
+              <button type="button" style={btn()} onClick={() => setEditing(null)}>Cancel</button>
+              <button type="submit" style={btn('primary')}>{editing==='new'?'Add Supplier':'Update'}</button>
+            </div>
+          </form>
+        </div>
+      )}
+
+      <div style={{ overflowX:'auto' }}>
+        <table style={tbl}>
+          <thead>
+            <tr>{['Name','Type','Risk Rating','Status','DPA','Sec. Questionnaire','Contract End','Actions'].map(h=><th key={h} style={th}>{h}</th>)}</tr>
+          </thead>
+          <tbody>
+            {suppliers.length === 0 && (
+              <tr><td colSpan={8} style={{ ...td, textAlign:'center', color:'var(--text3)', padding:32 }}>No suppliers registered yet</td></tr>
+            )}
+            {suppliers.map(s => (
+              <tr key={s.id}>
+                <td style={td}>
+                  <div style={{ fontWeight:600 }}>{s.name}</div>
+                  {s.country && <div style={{ fontSize:11, color:'var(--text3)' }}>{s.country}</div>}
+                </td>
+                <td style={td}><span style={badge('#6b7280')}>{humanize(s.supplier_type)}</span></td>
+                <td style={td}><span style={badge(SUPPLIER_RISK_COLORS[s.risk_rating]||'#6b7280')}>{cap(s.risk_rating)}</span></td>
+                <td style={td}><span style={badge(s.status==='active'?'#10b981':s.status==='under_review'?'#f59e0b':'#9ca3af')}>{humanize(s.status)}</span></td>
+                <td style={{ ...td, textAlign:'center' }}>{s.data_processing_agreement ? <span style={{ color:'#10b981', fontWeight:700 }}>✓</span> : <span style={{ color:'#9ca3af' }}>—</span>}</td>
+                <td style={{ ...td, textAlign:'center' }}>{s.security_questionnaire_done ? <span style={{ color:'#10b981', fontWeight:700 }}>✓</span> : <span style={{ color:'#9ca3af' }}>—</span>}</td>
+                <td style={td}>
+                  {s.contract_end
+                    ? <span style={{ color: isOverdue(s.contract_end)?'#ef4444':'var(--text1)', fontSize:13 }}>{fmtDate(s.contract_end)}</span>
+                    : '—'}
+                </td>
+                <td style={td}>
+                  {canEdit && (
+                    <div style={{ display:'flex', gap:6 }}>
+                      <button style={{ ...btn(), padding:'4px 10px', fontSize:12 }} onClick={() => startEdit(s)}>Edit</button>
+                      <button style={{ ...btn('danger'), padding:'4px 10px', fontSize:12 }} onClick={() => del(s.id)}>Del</button>
+                    </div>
+                  )}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+/* ── AI Systems Tab ───────────────────────────────────────────── */
+
+const AI_ACT_COLORS = { unacceptable:'#ef4444', high:'#f97316', limited:'#f59e0b', minimal:'#10b981' };
+
+function AISystemsTab({ user }) {
+  const [systems,  setSystems]  = useState([]);
+  const [editing,  setEditing]  = useState(null);
+  const blankA = {
+    name:'', version:'', ai_type:'generative_ai', vendor:'', business_purpose:'',
+    decision_role:'advisory', uses_personal_data:false, eu_ai_act_tier:'minimal',
+    deployment_status:'planned', owner:'', deployed_date:'', next_review_date:'', notes:'',
+  };
+  const [form, setForm] = useState(blankA);
+  const [err,  setErr]  = useState('');
+  const canEdit = ['admin','analyst'].includes(user?.role);
+
+  const load = async () => {
+    try { const r = await api.get('/ai-systems'); setSystems(r.data); } catch {}
+  };
+  useEffect(() => { load(); }, []);
+
+  const setF  = k => e => setForm(p => ({ ...p, [k]: e.target.value }));
+  const setFB = k => e => setForm(p => ({ ...p, [k]: e.target.checked }));
+
+  const submit = async e => {
+    e.preventDefault(); setErr('');
+    try {
+      if (editing === 'new') await api.post('/ai-systems', form);
+      else                   await api.put(`/ai-systems/${editing}`, form);
+      setEditing(null); setForm(blankA); load();
+    } catch (ex) { setErr(ex.response?.data?.error || 'Error saving AI system'); }
+  };
+
+  const startEdit = s => {
+    setEditing(s.id);
+    setForm({ ...s, deployed_date: s.deployed_date?.slice(0,10)||'', next_review_date: s.next_review_date?.slice(0,10)||'' });
+  };
+
+  const del = async id => {
+    if (!window.confirm('Delete this AI system record?')) return;
+    try { await api.delete(`/ai-systems/${id}`); load(); } catch {}
+  };
+
+  const markAssessed = async id => {
+    try { await api.post(`/ai-systems/${id}/mark-assessed`); load(); } catch (ex) { alert(ex.response?.data?.error || 'Failed'); }
+  };
+
+  return (
+    <div>
+      <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:16 }}>
+        <h2 style={{ fontSize:18, fontWeight:700, margin:0 }}>AI Systems Register</h2>
+        {canEdit && <button style={btn('primary')} onClick={() => { setForm(blankA); setEditing('new'); }}>+ Add AI System</button>}
+      </div>
+
+      {editing && canEdit && (
+        <div style={{ ...card, marginBottom:20 }}>
+          <h3 style={{ fontSize:15, fontWeight:700, margin:'0 0 14px' }}>{editing==='new'?'New AI System':'Edit AI System'}</h3>
+          <form onSubmit={submit} style={{ display:'flex', flexDirection:'column', gap:12 }}>
+            {err && <div style={{ color:'#ef4444', fontSize:13 }}>{err}</div>}
+            <div style={{ display:'grid', gridTemplateColumns:'2fr 1fr 1fr', gap:12 }}>
+              <div className="form-group">
+                <label>Name *</label>
+                <input style={inp} value={form.name} onChange={setF('name')} required placeholder="AI system name" />
+              </div>
+              <div className="form-group">
+                <label>Version</label>
+                <input style={inp} value={form.version} onChange={setF('version')} placeholder="e.g. 1.0" />
+              </div>
+              <div className="form-group">
+                <label>AI Type</label>
+                <select style={sel} value={form.ai_type} onChange={setF('ai_type')}>
+                  {[['generative_ai','Generative AI'],['ml_predictive','ML Predictive'],['nlp','NLP'],['computer_vision','Computer Vision'],['rpa_ai','RPA / AI'],['analytics','Analytics'],['other','Other']].map(([v,l])=><option key={v} value={v}>{l}</option>)}
+                </select>
+              </div>
+            </div>
+            <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr 1fr', gap:12 }}>
+              <div className="form-group">
+                <label>Vendor</label>
+                <input style={inp} value={form.vendor} onChange={setF('vendor')} />
+              </div>
+              <div className="form-group">
+                <label>Decision Role</label>
+                <select style={sel} value={form.decision_role} onChange={setF('decision_role')}>
+                  {[['advisory','Advisory'],['automated','Automated'],['augmented','Augmented']].map(([v,l])=><option key={v} value={v}>{l}</option>)}
+                </select>
+              </div>
+              <div className="form-group">
+                <label>EU AI Act Tier</label>
+                <select style={sel} value={form.eu_ai_act_tier} onChange={setF('eu_ai_act_tier')}>
+                  {[['unacceptable','Unacceptable'],['high','High'],['limited','Limited'],['minimal','Minimal']].map(([v,l])=><option key={v} value={v}>{l}</option>)}
+                </select>
+              </div>
+              <div className="form-group">
+                <label>Deployment Status</label>
+                <select style={sel} value={form.deployment_status} onChange={setF('deployment_status')}>
+                  {[['planned','Planned'],['in_use','In Use'],['retired','Retired'],['suspended','Suspended']].map(([v,l])=><option key={v} value={v}>{l}</option>)}
+                </select>
+              </div>
+            </div>
+            <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:12 }}>
+              <div className="form-group">
+                <label>Owner</label>
+                <input style={inp} value={form.owner} onChange={setF('owner')} />
+              </div>
+              <div className="form-group">
+                <label>Deployed Date</label>
+                <input type="date" style={inp} value={form.deployed_date} onChange={setF('deployed_date')} />
+              </div>
+              <div className="form-group">
+                <label>Next Review Date</label>
+                <input type="date" style={inp} value={form.next_review_date} onChange={setF('next_review_date')} />
+              </div>
+            </div>
+            <label style={{ display:'flex', alignItems:'center', gap:8, fontSize:13, cursor:'pointer' }}>
+              <input type="checkbox" checked={form.uses_personal_data} onChange={setFB('uses_personal_data')} style={{ accentColor:'var(--accent)' }} />
+              Uses personal data
+            </label>
+            <div className="form-group">
+              <label>Business Purpose</label>
+              <textarea style={{ ...inp, height:60, resize:'vertical' }} value={form.business_purpose} onChange={setF('business_purpose')} placeholder="Describe the business purpose and use case…" />
+            </div>
+            <div className="form-group">
+              <label>Notes</label>
+              <textarea style={{ ...inp, height:48, resize:'vertical' }} value={form.notes} onChange={setF('notes')} />
+            </div>
+            <div style={{ display:'flex', gap:8, justifyContent:'flex-end' }}>
+              <button type="button" style={btn()} onClick={() => setEditing(null)}>Cancel</button>
+              <button type="submit" style={btn('primary')}>{editing==='new'?'Add AI System':'Update'}</button>
+            </div>
+          </form>
+        </div>
+      )}
+
+      <div style={{ overflowX:'auto' }}>
+        <table style={tbl}>
+          <thead>
+            <tr>{['Name','Type','AI Act Tier','Decision Role','Personal Data','Status','Owner','Impact Assessed','Actions'].map(h=><th key={h} style={th}>{h}</th>)}</tr>
+          </thead>
+          <tbody>
+            {systems.length === 0 && (
+              <tr><td colSpan={9} style={{ ...td, textAlign:'center', color:'var(--text3)', padding:32 }}>No AI systems registered yet</td></tr>
+            )}
+            {systems.map(s => (
+              <tr key={s.id}>
+                <td style={td}>
+                  <div style={{ fontWeight:600 }}>{s.name}</div>
+                  {s.version && <div style={{ fontSize:11, color:'var(--text3)' }}>v{s.version}</div>}
+                  {s.vendor  && <div style={{ fontSize:11, color:'var(--text3)' }}>{s.vendor}</div>}
+                </td>
+                <td style={td}><span style={badge('#6b7280')}>{humanize(s.ai_type)}</span></td>
+                <td style={td}><span style={badge(AI_ACT_COLORS[s.eu_ai_act_tier]||'#6b7280')}>{cap(s.eu_ai_act_tier)}</span></td>
+                <td style={td}><span style={badge('#6b7280')}>{humanize(s.decision_role)}</span></td>
+                <td style={{ ...td, textAlign:'center' }}>{s.uses_personal_data ? <span style={{ color:'#f97316', fontWeight:700 }}>Yes</span> : <span style={{ color:'#6b7280' }}>No</span>}</td>
+                <td style={td}><span style={badge(s.deployment_status==='in_use'?'#10b981':s.deployment_status==='planned'?'#3b82f6':s.deployment_status==='suspended'?'#f59e0b':'#9ca3af')}>{humanize(s.deployment_status)}</span></td>
+                <td style={td}>{s.owner||'—'}</td>
+                <td style={td}>
+                  {s.impact_assessed
+                    ? <div style={{ color:'#10b981', fontSize:12, fontWeight:600 }}>✓ {fmtDate(s.impact_assessed_at)}</div>
+                    : canEdit
+                      ? <button style={{ ...btn(), padding:'3px 10px', fontSize:11 }} onClick={() => markAssessed(s.id)}>Mark Assessed</button>
+                      : <span style={{ color:'var(--text3)', fontSize:12 }}>—</span>
+                  }
+                </td>
+                <td style={td}>
+                  {canEdit && (
+                    <div style={{ display:'flex', gap:6 }}>
+                      <button style={{ ...btn(), padding:'4px 10px', fontSize:12 }} onClick={() => startEdit(s)}>Edit</button>
+                      <button style={{ ...btn('danger'), padding:'4px 10px', fontSize:12 }} onClick={() => del(s.id)}>Del</button>
+                    </div>
+                  )}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
 /* ── Main GRCHub ──────────────────────────────────────────────── */
 
 const TABS = [
@@ -1443,6 +1954,8 @@ const TABS = [
   { id:'tasks',     label:'Action Tracker',   icon:'✅' },
   { id:'reviews',   label:'Reviews & Audits', icon:'📋' },
   { id:'raci',      label:'RACI Matrices',    icon:'📊' },
+  { id:'suppliers', label:'Supplier Register',icon:'🏢' },
+  { id:'ai_systems',label:'AI Systems',       icon:'🤖' },
 ];
 
 export default function GRCHub() {
@@ -1508,6 +2021,8 @@ export default function GRCHub() {
       {tab === 'tasks'     && <TasksTab     user={user} />}
       {tab === 'reviews'   && <ReviewsTab   user={user} />}
       {tab === 'raci'      && <RACITab      user={user} />}
+      {tab === 'suppliers' && <SuppliersTab user={user} />}
+      {tab === 'ai_systems'&& <AISystemsTab user={user} />}
     </div>
   );
 }

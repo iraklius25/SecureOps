@@ -147,9 +147,13 @@ psql -U infosec_user -d infosec_db -h localhost -f schema_maturity.sql
 psql -U infosec_user -d infosec_db -h localhost -f schema_grc.sql
 psql -U infosec_user -d infosec_db -h localhost -f schema_raci.sql
 psql -U infosec_user -d infosec_db -h localhost -f schema_ldap.sql
+psql -U infosec_user -d infosec_db -h localhost -f schema_suppliers.sql
+psql -U infosec_user -d infosec_db -h localhost -f schema_platform_v2.sql
+psql -U infosec_user -d infosec_db -h localhost -f schema_ai_systems.sql
+psql -U infosec_user -d infosec_db -h localhost -f schema_audit_log.sql
 ```
 
-### Verify — must show 36 tables
+### Verify — must show 40 tables
 
 ```bash
 psql -U infosec_user -d infosec_db -h localhost -c "\dt"
@@ -380,9 +384,13 @@ psql -U infosec_user -d infosec_db -h localhost -f schema_maturity.sql
 psql -U infosec_user -d infosec_db -h localhost -f schema_grc.sql
 psql -U infosec_user -d infosec_db -h localhost -f schema_raci.sql
 psql -U infosec_user -d infosec_db -h localhost -f schema_ldap.sql
+psql -U infosec_user -d infosec_db -h localhost -f schema_suppliers.sql
+psql -U infosec_user -d infosec_db -h localhost -f schema_platform_v2.sql
+psql -U infosec_user -d infosec_db -h localhost -f schema_ai_systems.sql
+psql -U infosec_user -d infosec_db -h localhost -f schema_audit_log.sql
 ```
 
-### Table count is less than 36
+### Table count is less than 40
 Some schema files failed. Drop and recreate the database, then reload all schemas:
 ```bash
 sudo -u postgres psql -c "DROP DATABASE IF EXISTS infosec_db;"

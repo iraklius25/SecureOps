@@ -424,6 +424,113 @@ function BrandingTab() {
   );
 }
 
+/* ─── Audit Log Tab ──────────────────────────────── */
+function AuditLogTab() {
+  const [rows,    setRows]    = useState([]);
+  const [total,   setTotal]   = useState(0);
+  const [loading, setLoading] = useState(true);
+  const [filter,  setFilter]  = useState({ action:'', entity_type:'' });
+  const [offset,  setOffset]  = useState(0);
+  const LIMIT = 50;
+
+  const load = async (off = 0) => {
+    setLoading(true);
+    const params = new URLSearchParams({ limit: LIMIT, offset: off });
+    if (filter.action)      params.set('action', filter.action);
+    if (filter.entity_type) params.set('entity_type', filter.entity_type);
+    try {
+      const r = await api.get(`/activity-log?${params}`);
+      setRows(r.data.rows); setTotal(r.data.total); setOffset(off);
+    } catch {} finally { setLoading(false); }
+  };
+
+  useEffect(() => { load(0); }, [filter]);
+
+  const ACTION_COLORS = {
+    'document.approve': '#10b981', 'document.create': '#3b82f6', 'document.delete': '#ef4444',
+    'risk.create': '#8b5cf6', 'user.login': '#6b7280', 'ai_system.create': '#f59e0b',
+  };
+  const getColor = a => {
+    if (!a) return '#6b7280';
+    if (a.includes('delete')) return '#ef4444';
+    if (a.includes('create')) return '#3b82f6';
+    if (a.includes('approve')) return '#10b981';
+    if (a.includes('login')) return '#6b7280';
+    return '#8b5cf6';
+  };
+
+  return (
+    <div className="card" style={{ padding: 0 }}>
+      <div style={{ padding: '16px 20px', borderBottom: '1px solid var(--border)', display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+        <div style={{ fontWeight: 700, fontSize: 15, marginRight: 8 }}>Activity Audit Log</div>
+        <input
+          placeholder="Filter by action…"
+          value={filter.action}
+          onChange={e => setFilter(p => ({ ...p, action: e.target.value }))}
+          style={{ background: 'var(--bg3)', border: '1px solid var(--border)', borderRadius: 6, padding: '6px 10px', color: 'var(--text)', fontSize: 13, width: 180 }}
+        />
+        <select
+          value={filter.entity_type}
+          onChange={e => setFilter(p => ({ ...p, entity_type: e.target.value }))}
+          style={{ background: 'var(--bg3)', border: '1px solid var(--border)', borderRadius: 6, padding: '6px 10px', color: 'var(--text)', fontSize: 13 }}
+        >
+          <option value="">All entities</option>
+          {['document','risk','user','supplier','ai_system','task','review'].map(t => (
+            <option key={t} value={t}>{t}</option>
+          ))}
+        </select>
+        <span style={{ marginLeft: 'auto', fontSize: 12, color: 'var(--text3)' }}>{total} total events</span>
+      </div>
+      {loading ? (
+        <div className="empty-state"><div className="spinner" /></div>
+      ) : (
+        <>
+          <div className="table-wrap">
+            <table>
+              <thead>
+                <tr><th>Time</th><th>User</th><th>Action</th><th>Entity</th><th>IP</th></tr>
+              </thead>
+              <tbody>
+                {rows.length === 0 && (
+                  <tr><td colSpan={5} style={{ textAlign: 'center', padding: 32, color: 'var(--text3)' }}>No audit events found</td></tr>
+                )}
+                {rows.map(r => (
+                  <tr key={r.id}>
+                    <td className="text-dim mono" style={{ fontSize: 11, whiteSpace: 'nowrap' }}>
+                      {new Date(r.created_at).toLocaleString()}
+                    </td>
+                    <td style={{ fontWeight: 500, fontSize: 13 }}>{r.username || '—'}</td>
+                    <td>
+                      <span style={{ fontSize: 12, fontFamily: 'monospace', padding: '2px 7px', borderRadius: 10,
+                        background: `${getColor(r.action)}20`, color: getColor(r.action), fontWeight: 600 }}>
+                        {r.action}
+                      </span>
+                    </td>
+                    <td style={{ fontSize: 12 }}>
+                      {r.entity_type && <span style={{ color: 'var(--text3)' }}>{r.entity_type} · </span>}
+                      <span style={{ color: 'var(--text2)' }}>{r.entity_name || r.entity_id || '—'}</span>
+                    </td>
+                    <td className="mono text-dim" style={{ fontSize: 11 }}>{r.ip_address || '—'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          {total > LIMIT && (
+            <div style={{ padding: '12px 20px', display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+              <button className="btn btn-secondary btn-sm" disabled={offset === 0} onClick={() => load(offset - LIMIT)}>← Prev</button>
+              <span style={{ fontSize: 13, color: 'var(--text3)', alignSelf: 'center' }}>
+                {offset + 1}–{Math.min(offset + LIMIT, total)} of {total}
+              </span>
+              <button className="btn btn-secondary btn-sm" disabled={offset + LIMIT >= total} onClick={() => load(offset + LIMIT)}>Next →</button>
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
 /* ─── LDAP Tab ───────────────────────────────────── */
 function LDAPTab() {
   const ROLE_OPTIONS = ['admin', 'analyst', 'auditor', 'viewer'];
@@ -669,6 +776,7 @@ export default function Settings() {
     { key: 'scheduled-reports',label: 'Scheduled Reports' },
     { key: 'branding',         label: 'Branding' },
     { key: 'ldap',             label: 'LDAP / Active Directory' },
+    { key: 'audit-log',        label: 'Audit Log' },
   ];
 
   return (
@@ -851,6 +959,8 @@ export default function Settings() {
       {tab === 'branding' && <BrandingTab />}
 
       {tab === 'ldap' && <LDAPTab />}
+
+      {tab === 'audit-log' && <AuditLogTab />}
     </div>
   );
 }

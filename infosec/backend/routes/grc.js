@@ -115,29 +115,44 @@ router.get('/tasks', auth, async (req, res) => {
 });
 
 router.post('/tasks', auth, requireRole('admin', 'analyst'), async (req, res) => {
-  const { program_id, title, description, owner, due_date, priority, status, framework, clause_ref, source_type } = req.body;
+  const { program_id, title, description, owner, due_date, priority, status, framework, clause_ref,
+          nc_type, source, root_cause, containment_action, corrective_action,
+          verification_evidence, verification_date, recurrence_check_date } = req.body;
   if (!title) return res.status(400).json({ error: 'title is required' });
   try {
     const r = await db.query(
       `INSERT INTO grc_tasks
-         (program_id, title, description, owner, due_date, priority, status, framework, clause_ref, source_type, created_by)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING *`,
+         (program_id, title, description, owner, due_date, priority, status, framework, clause_ref,
+          nc_type, source, root_cause, containment_action, corrective_action,
+          verification_evidence, verification_date, recurrence_check_date, created_by)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18) RETURNING *`,
       [program_id || null, title.trim(), description || '', owner || '', due_date || null,
        priority || 'medium', status || 'open', framework || '', clause_ref || '',
-       source_type || 'manual', req.user.id]
+       nc_type || 'action', source || 'manual', root_cause || null, containment_action || null,
+       corrective_action || null, verification_evidence || null, verification_date || null,
+       recurrence_check_date || null, req.user.id]
     );
     res.status(201).json(r.rows[0]);
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 router.put('/tasks/:id', auth, requireRole('admin', 'analyst'), async (req, res) => {
-  const { title, description, owner, due_date, priority, status, framework, clause_ref } = req.body;
+  const { title, description, owner, due_date, priority, status, framework, clause_ref,
+          nc_type, source, root_cause, containment_action, corrective_action,
+          verification_evidence, verification_date, verified_by, recurrence_check_date } = req.body;
   try {
     const r = await db.query(
       `UPDATE grc_tasks SET title=$1, description=$2, owner=$3, due_date=$4, priority=$5,
-       status=$6, framework=$7, clause_ref=$8, updated_at=NOW() WHERE id=$9 RETURNING *`,
+       status=$6, framework=$7, clause_ref=$8,
+       nc_type=COALESCE($9,nc_type), source=COALESCE($10,source),
+       root_cause=$11, containment_action=$12, corrective_action=$13,
+       verification_evidence=$14, verification_date=$15, verified_by=$16, recurrence_check_date=$17,
+       updated_at=NOW() WHERE id=$18 RETURNING *`,
       [title, description || '', owner || '', due_date || null, priority, status,
-       framework || '', clause_ref || '', req.params.id]
+       framework || '', clause_ref || '',
+       nc_type || null, source || null, root_cause || null, containment_action || null,
+       corrective_action || null, verification_evidence || null, verification_date || null,
+       verified_by || null, recurrence_check_date || null, req.params.id]
     );
     if (!r.rows.length) return res.status(404).json({ error: 'Not found' });
     res.json(r.rows[0]);
@@ -148,6 +163,35 @@ router.delete('/tasks/:id', auth, requireRole('admin', 'analyst'), async (req, r
   try {
     await db.query('DELETE FROM grc_tasks WHERE id=$1', [req.params.id]);
     res.json({ message: 'Deleted' });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+/* ── Documents — approve ─────────────────────────────────────── */
+
+router.post('/documents/:id/approve', auth, requireRole('admin', 'analyst'), async (req, res) => {
+  try {
+    const r = await db.query(
+      `UPDATE grc_documents SET status='approved', approved_by=$1, approved_at=NOW(), updated_at=NOW()
+       WHERE id=$2 RETURNING *`,
+      [req.user.id, req.params.id]
+    );
+    if (!r.rows.length) return res.status(404).json({ error: 'Not found' });
+    res.json(r.rows[0]);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+/* ── Documents — version history ─────────────────────────────── */
+
+router.get('/documents/:id/versions', auth, async (req, res) => {
+  try {
+    const r = await db.query(
+      `SELECT v.*, u.username AS uploaded_by_username
+       FROM grc_document_versions v
+       LEFT JOIN users u ON u.id = v.uploaded_by
+       WHERE v.document_id=$1 ORDER BY v.version_num DESC`,
+      [req.params.id]
+    );
+    res.json(r.rows);
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
@@ -176,8 +220,11 @@ router.get('/documents', auth, async (req, res) => {
   const where = filters.length ? `WHERE ${filters.join(' AND ')}` : '';
   try {
     const r = await db.query(
-      `SELECT d.*, u.username AS uploaded_by_username FROM grc_documents d
-       LEFT JOIN users u ON u.id = d.uploaded_by ${where} ORDER BY d.created_at DESC`,
+      `SELECT d.*, u.username AS uploaded_by_username, a.username AS approved_by_username
+       FROM grc_documents d
+       LEFT JOIN users u ON u.id = d.uploaded_by
+       LEFT JOIN users a ON a.id = d.approved_by
+       ${where} ORDER BY d.created_at DESC`,
       vals
     );
     res.json(r.rows);
@@ -209,22 +256,36 @@ router.post('/documents', auth, requireRole('admin', 'analyst'), upload.single('
 });
 
 router.put('/documents/:id', auth, requireRole('admin', 'analyst'), upload.single('file'), async (req, res) => {
-  const { title, category, doc_version, status, owner, review_date, framework_links, tags, description } = req.body;
+  const { title, category, doc_version, status, owner, review_date, framework_links, tags, description, version_notes } = req.body;
   try {
     let links = [];
     try { links = JSON.parse(framework_links || '[]'); } catch { links = []; }
     const tagArr = tags ? tags.split(',').map(t => t.trim()).filter(Boolean) : [];
 
+    // Save current version snapshot before overwriting
+    const cur = await db.query('SELECT * FROM grc_documents WHERE id=$1', [req.params.id]);
+    if (cur.rows.length) {
+      const c = cur.rows[0];
+      await db.query(
+        `INSERT INTO grc_document_versions
+           (document_id, version_num, doc_version, original_name, stored_name, mimetype, file_size, status, uploaded_by, notes)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
+        [req.params.id, c.current_version || 1, c.doc_version, c.original_name,
+         c.stored_name, c.mimetype, c.file_size, c.status, c.uploaded_by, version_notes || '']
+      );
+    }
+
     if (req.file) {
       // delete old file from disk before replacing
-      const old = await db.query('SELECT stored_name FROM grc_documents WHERE id=$1', [req.params.id]);
+      const old = cur;
       if (old.rows.length && old.rows[0].stored_name) {
         fs.unlink(path.join(UPLOAD_DIR, old.rows[0].stored_name), () => {});
       }
       const r = await db.query(
         `UPDATE grc_documents SET title=$1, category=$2, doc_version=$3, status=$4, owner=$5,
          review_date=$6, framework_links=$7, tags=$8, description=$9,
-         original_name=$10, stored_name=$11, mimetype=$12, file_size=$13, updated_at=NOW()
+         original_name=$10, stored_name=$11, mimetype=$12, file_size=$13,
+         current_version=current_version+1, approved_by=NULL, approved_at=NULL, updated_at=NOW()
          WHERE id=$14 RETURNING *`,
         [title, category, doc_version, status, owner || '', review_date || null,
          links, tagArr, description || '',
@@ -237,7 +298,9 @@ router.put('/documents/:id', auth, requireRole('admin', 'analyst'), upload.singl
 
     const r = await db.query(
       `UPDATE grc_documents SET title=$1, category=$2, doc_version=$3, status=$4, owner=$5,
-       review_date=$6, framework_links=$7, tags=$8, description=$9, updated_at=NOW() WHERE id=$10 RETURNING *`,
+       review_date=$6, framework_links=$7, tags=$8, description=$9,
+       current_version=current_version+1, approved_by=NULL, approved_at=NULL, updated_at=NOW()
+       WHERE id=$10 RETURNING *`,
       [title, category, doc_version, status, owner || '', review_date || null,
        links, tagArr, description || '', req.params.id]
     );
@@ -324,31 +387,36 @@ router.get('/reviews', auth, async (_req, res) => {
 });
 
 router.post('/reviews', auth, requireRole('admin', 'analyst'), async (req, res) => {
-  const { program_id, review_date, review_type, title, chair, attendees, agenda, inputs, decisions, action_items, minutes_text, status, approved_by } = req.body;
+  const { program_id, review_date, review_type, title, chair, attendees, agenda, inputs,
+          decisions, action_items, minutes_text, status, approved_by, agenda_checklist } = req.body;
   if (!title || !review_date) return res.status(400).json({ error: 'title and review_date are required' });
   try {
     const r = await db.query(
       `INSERT INTO grc_reviews
-         (program_id, review_date, review_type, title, chair, attendees, agenda, inputs, decisions, action_items, minutes_text, status, approved_by, created_by)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14) RETURNING *`,
+         (program_id, review_date, review_type, title, chair, attendees, agenda, inputs,
+          decisions, action_items, minutes_text, status, approved_by, agenda_checklist, created_by)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15) RETURNING *`,
       [program_id || null, review_date, review_type || 'management_review', title.trim(),
        chair || '', attendees || [], agenda || [], inputs || {}, decisions || [],
-       action_items || [], minutes_text || '', status || 'planned', approved_by || '', req.user.id]
+       action_items || [], minutes_text || '', status || 'planned', approved_by || '',
+       agenda_checklist || {}, req.user.id]
     );
     res.status(201).json(r.rows[0]);
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 router.put('/reviews/:id', auth, requireRole('admin', 'analyst'), async (req, res) => {
-  const { review_date, review_type, title, chair, attendees, agenda, inputs, decisions, action_items, minutes_text, status, approved_by } = req.body;
+  const { review_date, review_type, title, chair, attendees, agenda, inputs, decisions,
+          action_items, minutes_text, status, approved_by, agenda_checklist } = req.body;
   try {
     const r = await db.query(
       `UPDATE grc_reviews SET review_date=$1, review_type=$2, title=$3, chair=$4, attendees=$5,
        agenda=$6, inputs=$7, decisions=$8, action_items=$9, minutes_text=$10,
-       status=$11, approved_by=$12, updated_at=NOW() WHERE id=$13 RETURNING *`,
+       status=$11, approved_by=$12, agenda_checklist=COALESCE($13,agenda_checklist), updated_at=NOW()
+       WHERE id=$14 RETURNING *`,
       [review_date, review_type, title, chair || '', attendees || [], agenda || [],
        inputs || {}, decisions || [], action_items || [], minutes_text || '',
-       status, approved_by || '', req.params.id]
+       status, approved_by || '', agenda_checklist || null, req.params.id]
     );
     if (!r.rows.length) return res.status(404).json({ error: 'Not found' });
     res.json(r.rows[0]);

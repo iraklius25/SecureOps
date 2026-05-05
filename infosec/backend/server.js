@@ -46,6 +46,9 @@ app.use('/api/totp',           require('./routes/totp'));
 app.use('/api/evidence',       require('./routes/evidence'));
 app.use('/api/maturity',       require('./routes/maturity'));
 app.use('/api/grc',            require('./routes/grc'));
+app.use('/api/suppliers',      require('./routes/suppliers'));
+app.use('/api/ai-systems',     require('./routes/aiSystems'));
+app.use('/api/activity-log',   require('./routes/activityLog'));
 
 // ── Static uploads ──────────────────────────────────────────────
 app.use('/uploads', require('express').static(require('path').join(__dirname, 'uploads')));
