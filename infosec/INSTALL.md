@@ -145,9 +145,10 @@ psql -U infosec_user -d infosec_db -h localhost -f schema_gap_assessment.sql
 psql -U infosec_user -d infosec_db -h localhost -f schema_force_password.sql
 psql -U infosec_user -d infosec_db -h localhost -f schema_maturity.sql
 psql -U infosec_user -d infosec_db -h localhost -f schema_grc.sql
+psql -U infosec_user -d infosec_db -h localhost -f schema_raci.sql
 ```
 
-### Verify — must show 35 tables
+### Verify — must show 36 tables
 
 ```bash
 psql -U infosec_user -d infosec_db -h localhost -c "\dt"
@@ -376,15 +377,16 @@ psql -U infosec_user -d infosec_db -h localhost -f schema_gap_assessment.sql
 psql -U infosec_user -d infosec_db -h localhost -f schema_force_password.sql
 psql -U infosec_user -d infosec_db -h localhost -f schema_maturity.sql
 psql -U infosec_user -d infosec_db -h localhost -f schema_grc.sql
+psql -U infosec_user -d infosec_db -h localhost -f schema_raci.sql
 ```
 
-### Table count is less than 35
+### Table count is less than 36
 Some schema files failed. Drop and recreate the database, then reload all schemas:
 ```bash
 sudo -u postgres psql -c "DROP DATABASE IF EXISTS infosec_db;"
 sudo -u postgres psql -c "CREATE DATABASE infosec_db OWNER infosec_user;"
 sudo -u postgres psql -c "\c infosec_db" -c "GRANT ALL ON SCHEMA public TO infosec_user;"
-# Then run all 10 psql -f commands above
+# Then run all 11 psql -f commands above
 ```
 
 ### NodeSource blocked (corporate network)

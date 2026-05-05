@@ -1044,6 +1044,386 @@ function ReviewsTab({ user }) {
   );
 }
 
+/* ── RACI Matrix ──────────────────────────────────────────────── */
+
+const RACI_CYCLE  = ['', 'R', 'A', 'C', 'I'];
+const RACI_COLORS = { R:'#3b82f6', A:'#ef4444', C:'#10b981', I:'#f59e0b' };
+const RACI_LABELS = { R:'Responsible', A:'Accountable', C:'Consulted', I:'Informed' };
+
+function RACIMatrix({ matrix: init, canEdit, onBack, onSaved }) {
+  const [m,       setM]       = useState(init);
+  const [saving,  setSaving]  = useState(false);
+  const [saveMsg, setSaveMsg] = useState('');
+  const [editRole, setEditRole] = useState(null);
+  const [editProc, setEditProc] = useState(null);
+
+  const roles     = m.roles     || [];
+  const processes = m.processes || [];
+  const cells     = m.cells     || {};
+
+  const upd = patch => setM(prev => ({ ...prev, ...patch }));
+
+  const save = async () => {
+    setSaving(true); setSaveMsg('');
+    try {
+      const r = await api.put(`/grc/raci/${m.id}`, m);
+      setSaveMsg('Saved'); onSaved(r.data);
+      setTimeout(() => setSaveMsg(''), 2000);
+    } catch { setSaveMsg('Save failed'); }
+    finally { setSaving(false); }
+  };
+
+  const exportCSV = () => {
+    const header = ['Process','Category',...roles.map(r => r.name)].join(',');
+    const rows   = processes.map(p => [
+      `"${p.name}"`, `"${p.category||''}"`,
+      ...roles.map(r => cells[`${p.id}_${r.id}`] || ''),
+    ].join(','));
+    const blob = new Blob([[header,...rows].join('\n')], { type:'text/csv' });
+    const a    = document.createElement('a');
+    a.href     = URL.createObjectURL(blob);
+    a.download = `RACI_${m.name.replace(/\s+/g,'_')}.csv`;
+    a.click(); URL.revokeObjectURL(a.href);
+  };
+
+  /* role operations */
+  const addRole = () => {
+    const id = `r${Date.now()}`;
+    upd({ roles: [...roles, { id, name:'New Role' }] });
+    setEditRole(id);
+  };
+  const renameRole = (id, name) => upd({ roles: roles.map(r => r.id===id ? {...r,name} : r) });
+  const deleteRole = id => {
+    const nc = {...cells};
+    processes.forEach(p => delete nc[`${p.id}_${id}`]);
+    upd({ roles: roles.filter(r => r.id!==id), cells: nc });
+  };
+
+  /* process operations */
+  const addProcess = () => {
+    const id = `p${Date.now()}`;
+    upd({ processes: [...processes, { id, name:'New Process', category:'' }] });
+    setEditProc(id);
+  };
+  const updateProc = (id, patch) => upd({ processes: processes.map(p => p.id===id ? {...p,...patch} : p) });
+  const deleteProc = id => {
+    const nc = {...cells};
+    roles.forEach(r => delete nc[`${id}_${r.id}`]);
+    upd({ processes: processes.filter(p => p.id!==id), cells: nc });
+  };
+  const moveProc = (id, dir) => {
+    const idx  = processes.findIndex(p => p.id===id);
+    const swap = dir==='up' ? idx-1 : idx+1;
+    if (swap < 0 || swap >= processes.length) return;
+    const arr = [...processes];
+    [arr[idx], arr[swap]] = [arr[swap], arr[idx]];
+    upd({ processes: arr });
+  };
+
+  /* cell cycling */
+  const cycleCell = (procId, roleId) => {
+    if (!canEdit) return;
+    const key = `${procId}_${roleId}`;
+    const cur = cells[key] || '';
+    const nxt = RACI_CYCLE[(RACI_CYCLE.indexOf(cur) + 1) % RACI_CYCLE.length];
+    upd({ cells: { ...cells, [key]: nxt } });
+  };
+
+  const stickyBg = 'var(--surface2)';
+
+  return (
+    <div>
+      {/* Header */}
+      <div style={{ display:'flex', alignItems:'center', gap:12, marginBottom:20, flexWrap:'wrap' }}>
+        <button style={btn()} onClick={onBack}>← Back</button>
+        <div style={{ flex:1, minWidth:200 }}>
+          <input
+            value={m.name}
+            onChange={e => upd({ name: e.target.value })}
+            disabled={!canEdit}
+            style={{ display:'block', width:'100%', fontSize:17, fontWeight:700, background:'transparent', border:'none', borderBottom:'1px solid var(--border2)', color:'var(--text1)', paddingBottom:3, outline:'none', marginBottom:4 }}
+          />
+          <input
+            value={m.description||''}
+            onChange={e => upd({ description: e.target.value })}
+            disabled={!canEdit}
+            placeholder="Description (optional)"
+            style={{ display:'block', width:'100%', fontSize:13, background:'transparent', border:'none', borderBottom:'1px solid var(--border2)', color:'var(--text3)', paddingBottom:2, outline:'none' }}
+          />
+        </div>
+        <div style={{ display:'flex', gap:8, flexShrink:0 }}>
+          <button style={btn()} onClick={exportCSV}>⬇ CSV</button>
+          {canEdit && <button style={btn('primary')} onClick={save} disabled={saving}>{saving?'Saving…':'Save'}</button>}
+        </div>
+      </div>
+
+      {saveMsg && <div style={{ marginBottom:12, fontSize:13, fontWeight:600, color: saveMsg==='Saved'?'#10b981':'#ef4444' }}>{saveMsg}</div>}
+
+      {/* Legend */}
+      <div style={{ display:'flex', gap:14, marginBottom:16, flexWrap:'wrap', alignItems:'center' }}>
+        {Object.entries(RACI_LABELS).map(([k,v]) => (
+          <div key={k} style={{ display:'flex', alignItems:'center', gap:6 }}>
+            <div style={{ width:26, height:26, borderRadius:6, background:RACI_COLORS[k], display:'flex', alignItems:'center', justifyContent:'center', fontSize:12, fontWeight:800, color:'#fff' }}>{k}</div>
+            <span style={{ fontSize:12, color:'var(--text2)' }}>{v}</span>
+          </div>
+        ))}
+        {canEdit && <span style={{ fontSize:11, color:'var(--text3)', marginLeft:4 }}>— click a cell to cycle · click a name to rename · × to delete</span>}
+      </div>
+
+      {/* Table */}
+      <div style={{ overflowX:'auto', borderRadius:8, border:'1px solid var(--border1)' }}>
+        <table style={{ ...tbl, tableLayout:'auto', minWidth: 400 + roles.length * 110 }}>
+          <thead>
+            <tr style={{ background:'var(--surface3)' }}>
+              <th style={{ ...th, minWidth:220, position:'sticky', left:0, background:'var(--surface3)', zIndex:2 }}>Process / Activity</th>
+              <th style={{ ...th, minWidth:140 }}>Category</th>
+              {roles.map(r => (
+                <th key={r.id} style={{ ...th, minWidth:110, textAlign:'center' }}>
+                  {canEdit && editRole===r.id ? (
+                    <input
+                      autoFocus
+                      value={r.name}
+                      onChange={e => renameRole(r.id, e.target.value)}
+                      onBlur={() => setEditRole(null)}
+                      onKeyDown={e => { if (e.key==='Enter'||e.key==='Escape') setEditRole(null); }}
+                      style={{ ...inp, padding:'3px 6px', fontSize:12, textAlign:'center', width:'100%' }}
+                    />
+                  ) : (
+                    <div style={{ display:'flex', alignItems:'center', justifyContent:'center', gap:4 }}>
+                      <span
+                        style={{ cursor: canEdit?'pointer':'default', fontWeight:700 }}
+                        onClick={() => canEdit && setEditRole(r.id)}
+                        title={canEdit?'Click to rename':''}
+                      >{r.name}</span>
+                      {canEdit && (
+                        <button onClick={() => deleteRole(r.id)}
+                          style={{ background:'none', border:'none', cursor:'pointer', color:'#ef4444', fontSize:15, lineHeight:1, padding:'0 2px' }}>×</button>
+                      )}
+                    </div>
+                  )}
+                </th>
+              ))}
+              {canEdit && (
+                <th style={{ ...th, minWidth:90, textAlign:'center' }}>
+                  <button style={{ ...btn('primary'), padding:'4px 10px', fontSize:11 }} onClick={addRole}>+ Role</button>
+                </th>
+              )}
+              {canEdit && <th style={{ ...th, width:72 }} />}
+            </tr>
+          </thead>
+          <tbody>
+            {processes.length === 0 && (
+              <tr>
+                <td colSpan={3 + roles.length + (canEdit ? 2 : 0)}
+                  style={{ ...td, textAlign:'center', color:'var(--text3)', padding:36 }}>
+                  No processes yet — click "+ Add Process" below
+                </td>
+              </tr>
+            )}
+            {processes.map((p, idx) => (
+              <tr key={p.id}>
+                {/* Process name — sticky */}
+                <td style={{ ...td, fontWeight:600, position:'sticky', left:0, background: stickyBg, zIndex:1, minWidth:220 }}>
+                  {canEdit && editProc===p.id ? (
+                    <input
+                      autoFocus
+                      value={p.name}
+                      onChange={e => updateProc(p.id, { name: e.target.value })}
+                      onBlur={() => setEditProc(null)}
+                      onKeyDown={e => { if (e.key==='Enter'||e.key==='Escape') setEditProc(null); }}
+                      style={{ ...inp, padding:'3px 6px', fontSize:13, width:'100%' }}
+                    />
+                  ) : (
+                    <span
+                      style={{ cursor: canEdit?'pointer':'default' }}
+                      onClick={() => canEdit && setEditProc(p.id)}
+                      title={canEdit?'Click to rename':''}
+                    >{p.name}</span>
+                  )}
+                </td>
+                {/* Category — inline editable */}
+                <td style={{ ...td, minWidth:140 }}>
+                  <input
+                    value={p.category||''}
+                    onChange={e => updateProc(p.id, { category: e.target.value })}
+                    disabled={!canEdit}
+                    placeholder={canEdit ? 'Category…' : '—'}
+                    style={{ ...inp, padding:'3px 6px', fontSize:12 }}
+                  />
+                </td>
+                {/* RACI cells */}
+                {roles.map(r => {
+                  const val = cells[`${p.id}_${r.id}`] || '';
+                  return (
+                    <td key={r.id} style={{ ...td, textAlign:'center', padding:'7px 6px' }}>
+                      <div
+                        onClick={() => cycleCell(p.id, r.id)}
+                        title={val ? `${val} — ${RACI_LABELS[val]}` : canEdit ? 'Click to assign' : '—'}
+                        style={{
+                          width:34, height:34, borderRadius:7, margin:'0 auto',
+                          display:'flex', alignItems:'center', justifyContent:'center',
+                          fontWeight:800, fontSize:14,
+                          cursor: canEdit ? 'pointer' : 'default',
+                          background: val ? RACI_COLORS[val] : 'var(--surface3)',
+                          color: val ? '#fff' : 'var(--text3)',
+                          border: val ? 'none' : '1px dashed var(--border2)',
+                          transition:'background 0.12s, transform 0.08s',
+                          userSelect:'none',
+                        }}
+                        onMouseDown={e => { if (canEdit) e.currentTarget.style.transform='scale(0.88)'; }}
+                        onMouseUp={e => { e.currentTarget.style.transform=''; }}
+                        onMouseLeave={e => { e.currentTarget.style.transform=''; }}
+                      >
+                        {val || '·'}
+                      </div>
+                    </td>
+                  );
+                })}
+                {/* Spacer under + Role column */}
+                {canEdit && <td style={td} />}
+                {/* Row controls */}
+                {canEdit && (
+                  <td style={{ ...td, padding:'4px 8px' }}>
+                    <div style={{ display:'flex', flexDirection:'column', gap:2 }}>
+                      <button onClick={() => moveProc(p.id,'up')} disabled={idx===0}
+                        style={{ background:'none', border:'none', cursor:'pointer', color: idx===0?'var(--text3)':'var(--text2)', fontSize:13, padding:'1px 3px', lineHeight:1 }}>↑</button>
+                      <button onClick={() => moveProc(p.id,'down')} disabled={idx===processes.length-1}
+                        style={{ background:'none', border:'none', cursor:'pointer', color: idx===processes.length-1?'var(--text3)':'var(--text2)', fontSize:13, padding:'1px 3px', lineHeight:1 }}>↓</button>
+                      <button onClick={() => deleteProc(p.id)}
+                        style={{ background:'none', border:'none', cursor:'pointer', color:'#ef4444', fontSize:15, padding:'1px 3px', lineHeight:1 }}>×</button>
+                    </div>
+                  </td>
+                )}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      {/* Add process */}
+      {canEdit && (
+        <button style={{ ...btn(), marginTop:12, padding:'7px 16px' }} onClick={addProcess}>
+          + Add Process / Activity
+        </button>
+      )}
+    </div>
+  );
+}
+
+function RACITab({ user }) {
+  const [matrices,    setMatrices]    = useState([]);
+  const [selected,    setSelected]    = useState(null);
+  const [showCreate,  setShowCreate]  = useState(false);
+  const [createName,  setCreateName]  = useState('');
+  const [creating,    setCreating]    = useState(false);
+  const [err,         setErr]         = useState('');
+  const canEdit = ['admin','analyst'].includes(user?.role);
+
+  const load = async () => { try { const r = await api.get('/grc/raci'); setMatrices(r.data); } catch {} };
+  useEffect(() => { load(); }, []);
+
+  const create = async () => {
+    if (!createName.trim()) return;
+    setCreating(true); setErr('');
+    try {
+      const r = await api.post('/grc/raci', {
+        name: createName.trim(),
+        roles:     [{ id:'r1', name:'Role 1' }, { id:'r2', name:'Role 2' }, { id:'r3', name:'Role 3' }],
+        processes: [{ id:'p1', name:'Process 1', category:'' }],
+        cells:     {},
+      });
+      setSelected(r.data); setShowCreate(false); setCreateName('');
+    } catch (ex) { setErr(ex.response?.data?.error || 'Error'); }
+    finally { setCreating(false); }
+  };
+
+  const del = async (id, e) => {
+    e.stopPropagation();
+    if (!window.confirm('Delete this RACI matrix?')) return;
+    try { await api.delete(`/grc/raci/${id}`); load(); } catch {}
+  };
+
+  if (selected) {
+    return (
+      <RACIMatrix
+        matrix={selected}
+        canEdit={canEdit}
+        onBack={() => { setSelected(null); load(); }}
+        onSaved={upd => setSelected(upd)}
+      />
+    );
+  }
+
+  return (
+    <div>
+      <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:16 }}>
+        <h2 style={{ fontSize:18, fontWeight:700, margin:0 }}>RACI Matrices</h2>
+        {canEdit && <button style={btn('primary')} onClick={() => { setShowCreate(true); setCreateName(''); setErr(''); }}>+ New Matrix</button>}
+      </div>
+
+      {showCreate && canEdit && (
+        <div style={{ ...card, marginBottom:20 }}>
+          <h3 style={{ fontSize:15, fontWeight:700, margin:'0 0 14px' }}>New RACI Matrix</h3>
+          {err && <div style={{ color:'#ef4444', fontSize:13, marginBottom:8 }}>{err}</div>}
+          <div style={{ display:'flex', gap:8 }}>
+            <input
+              autoFocus style={{ ...inp, flex:1 }}
+              value={createName}
+              onChange={e => setCreateName(e.target.value)}
+              onKeyDown={e => { if (e.key==='Enter') create(); if (e.key==='Escape') setShowCreate(false); }}
+              placeholder="e.g. ISO 27001 Responsibility Matrix"
+            />
+            <button style={btn('primary')} onClick={create} disabled={creating||!createName.trim()}>{creating?'Creating…':'Create'}</button>
+            <button style={btn()} onClick={() => setShowCreate(false)}>Cancel</button>
+          </div>
+        </div>
+      )}
+
+      {matrices.length === 0 && !showCreate ? (
+        <div style={{ ...card, textAlign:'center', padding:44 }}>
+          <div style={{ fontSize:36, marginBottom:12 }}>📊</div>
+          <div style={{ fontSize:15, color:'var(--text2)', marginBottom:6 }}>No RACI matrices yet</div>
+          <div style={{ fontSize:13, color:'var(--text3)', marginBottom:18 }}>
+            Define roles (columns) and processes (rows), assign R · A · C · I per cell
+          </div>
+          {canEdit && <button style={btn('primary')} onClick={() => setShowCreate(true)}>+ New Matrix</button>}
+        </div>
+      ) : (
+        <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
+          {matrices.map(m => {
+            const roleCount = m.roles?.length || 0;
+            const procCount = m.processes?.length || 0;
+            const assigned  = Object.values(m.cells||{}).filter(Boolean).length;
+            return (
+              <div key={m.id} onClick={() => setSelected(m)}
+                style={{ ...card, cursor:'pointer', display:'flex', alignItems:'center', gap:16 }}>
+                <div style={{ fontSize:28, flexShrink:0 }}>📊</div>
+                <div style={{ flex:1, minWidth:0 }}>
+                  <div style={{ fontWeight:700, fontSize:15, color:'var(--text1)' }}>{m.name}</div>
+                  {m.description && <div style={{ fontSize:12, color:'var(--text3)', marginTop:2 }}>{m.description}</div>}
+                  <div style={{ fontSize:12, color:'var(--text3)', marginTop:4 }}>
+                    {roleCount} role{roleCount!==1?'s':''} · {procCount} process{procCount!==1?'es':''} · {assigned} cell{assigned!==1?'s':''} assigned · Updated {fmtDate(m.updated_at)}
+                  </div>
+                </div>
+                <div style={{ display:'flex', gap:4, flexWrap:'wrap', maxWidth:220, flexShrink:0 }}>
+                  {(m.roles||[]).slice(0,6).map(r => (
+                    <span key={r.id} style={{ ...badge('#6b7280'), fontSize:10 }}>{r.name}</span>
+                  ))}
+                  {(m.roles||[]).length > 6 && <span style={{ fontSize:11, color:'var(--text3)' }}>+{m.roles.length-6}</span>}
+                </div>
+                {canEdit && (
+                  <button style={{ ...btn('danger'), padding:'5px 12px', fontSize:12, flexShrink:0 }}
+                    onClick={e => del(m.id, e)}>Delete</button>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
 /* ── Main GRCHub ──────────────────────────────────────────────── */
 
 const TABS = [
@@ -1052,6 +1432,7 @@ const TABS = [
   { id:'controls',  label:'Control Register', icon:'🛡' },
   { id:'tasks',     label:'Action Tracker',   icon:'✅' },
   { id:'reviews',   label:'Reviews & Audits', icon:'📋' },
+  { id:'raci',      label:'RACI Matrices',    icon:'📊' },
 ];
 
 export default function GRCHub() {
@@ -1116,6 +1497,7 @@ export default function GRCHub() {
       {tab === 'controls'  && <ControlsTab  user={user} />}
       {tab === 'tasks'     && <TasksTab     user={user} />}
       {tab === 'reviews'   && <ReviewsTab   user={user} />}
+      {tab === 'raci'      && <RACITab      user={user} />}
     </div>
   );
 }

@@ -362,4 +362,56 @@ router.delete('/reviews/:id', auth, requireRole('admin'), async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+/* ── RACI Matrices ────────────────────────────────────────────── */
+
+router.get('/raci', auth, async (_req, res) => {
+  try {
+    const r = await db.query('SELECT * FROM grc_raci_matrices ORDER BY created_at DESC');
+    res.json(r.rows);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+router.post('/raci', auth, requireRole('admin', 'analyst'), async (req, res) => {
+  const { name, description, program_id, framework, roles, processes, cells } = req.body;
+  if (!name) return res.status(400).json({ error: 'name is required' });
+  try {
+    const r = await db.query(
+      `INSERT INTO grc_raci_matrices (name, description, program_id, framework, roles, processes, cells, created_by)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *`,
+      [name.trim(), description || '', program_id || null, framework || '',
+       JSON.stringify(roles || []), JSON.stringify(processes || []), JSON.stringify(cells || {}), req.user.id]
+    );
+    res.status(201).json(r.rows[0]);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+router.get('/raci/:id', auth, async (req, res) => {
+  try {
+    const r = await db.query('SELECT * FROM grc_raci_matrices WHERE id=$1', [req.params.id]);
+    if (!r.rows.length) return res.status(404).json({ error: 'Not found' });
+    res.json(r.rows[0]);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+router.put('/raci/:id', auth, requireRole('admin', 'analyst'), async (req, res) => {
+  const { name, description, program_id, framework, roles, processes, cells } = req.body;
+  try {
+    const r = await db.query(
+      `UPDATE grc_raci_matrices SET name=$1, description=$2, program_id=$3, framework=$4,
+       roles=$5, processes=$6, cells=$7, updated_at=NOW() WHERE id=$8 RETURNING *`,
+      [name, description || '', program_id || null, framework || '',
+       JSON.stringify(roles || []), JSON.stringify(processes || []), JSON.stringify(cells || {}), req.params.id]
+    );
+    if (!r.rows.length) return res.status(404).json({ error: 'Not found' });
+    res.json(r.rows[0]);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+router.delete('/raci/:id', auth, requireRole('admin'), async (req, res) => {
+  try {
+    await db.query('DELETE FROM grc_raci_matrices WHERE id=$1', [req.params.id]);
+    res.json({ message: 'Deleted' });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 module.exports = router;
