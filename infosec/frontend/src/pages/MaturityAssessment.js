@@ -208,7 +208,7 @@ const FRAMEWORKS = {
   },
   ISO42001: {
     label: 'ISO 42001',
-    subtitle: 'AI Management System — ISO/IEC 42001:2023 (FULL HOUSE LLC AIMS)',
+    subtitle: 'AI Management System — ISO/IEC 42001:2023',
     type: 'hierarchical',
     sections: ISO42001_SECTIONS,
     annexA: ISO42001_ANNEX_A,
