@@ -10,17 +10,40 @@ router.post('/login', async (req, res) => {
   const { username, password } = req.body;
   if (!username || !password) return res.status(400).json({ error: 'Username and password required' });
   try {
-    const user = await db.query(
+    const userResult = await db.query(
       'SELECT * FROM users WHERE username=$1 OR email=$1',
       [username]
     );
-    if (!user.rows.length) return res.status(401).json({ error: 'Invalid credentials' });
-    const u = user.rows[0];
+
+    // ── LDAP path ──────────────────────────────────────────────────────────
+    if (!userResult.rows.length || userResult.rows[0].auth_provider === 'ldap') {
+      const ldapSettingRow = await db.query("SELECT value FROM settings WHERE key='ldap_enabled'");
+      const ldapEnabled = ldapSettingRow.rows[0]?.value === 'true';
+      if (ldapEnabled) {
+        try {
+          const ldap = require('../services/ldap');
+          const u = await ldap.authenticate(username, password);
+          if (!u.is_active) return res.status(403).json({ error: 'Account disabled' });
+          const token = jwt.sign({ id: u.id, role: u.role }, process.env.JWT_SECRET, { expiresIn: '12h' });
+          return res.json({ token, user: { id: u.id, username: u.username, email: u.email, role: u.role, full_name: u.full_name, force_password_change: false } });
+        } catch (ldapErr) {
+          // If we also have no local user, return 401
+          if (!userResult.rows.length) return res.status(401).json({ error: 'Invalid credentials' });
+          // If local user exists with auth_provider=ldap, don't fall through
+          if (userResult.rows[0].auth_provider === 'ldap') return res.status(401).json({ error: 'Invalid credentials' });
+        }
+      } else if (!userResult.rows.length) {
+        return res.status(401).json({ error: 'Invalid credentials' });
+      }
+    }
+
+    // ── Local (bcrypt) path ────────────────────────────────────────────────
+    const u = userResult.rows[0];
+    if (!u) return res.status(401).json({ error: 'Invalid credentials' });
     if (!u.is_active) return res.status(403).json({ error: 'Account disabled' });
     const valid = await bcrypt.compare(password, u.password);
     if (!valid) return res.status(401).json({ error: 'Invalid credentials' });
 
-    // If 2FA is enabled, don't issue JWT yet — require TOTP step
     if (u.totp_enabled) {
       return res.json({ totp_required: true, user_id: u.id });
     }
@@ -65,13 +88,16 @@ router.post('/totp-login', async (req, res) => {
 // GET /api/auth/me
 router.get('/me', auth, (req, res) => res.json(req.user));
 
-// POST /api/auth/change-password
+// POST /api/auth/change-password — local accounts only
 router.post('/change-password', auth, async (req, res) => {
   const { current, newPassword } = req.body;
   if (!current || !newPassword) return res.status(400).json({ error: 'Both passwords required' });
   if (newPassword.length < 8) return res.status(400).json({ error: 'Password must be 8+ characters' });
   try {
-    const user = await db.query('SELECT password FROM users WHERE id=$1', [req.user.id]);
+    const user = await db.query('SELECT password, auth_provider FROM users WHERE id=$1', [req.user.id]);
+    if (user.rows[0]?.auth_provider === 'ldap') {
+      return res.status(400).json({ error: 'Password is managed by your domain — change it in Active Directory' });
+    }
     const valid = await bcrypt.compare(current, user.rows[0].password);
     if (!valid) return res.status(401).json({ error: 'Current password incorrect' });
     const hashed = await bcrypt.hash(newPassword, 12);

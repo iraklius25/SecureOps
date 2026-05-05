@@ -146,13 +146,14 @@ psql -U infosec_user -d infosec_db -h localhost -f schema_force_password.sql
 psql -U infosec_user -d infosec_db -h localhost -f schema_maturity.sql
 psql -U infosec_user -d infosec_db -h localhost -f schema_grc.sql
 psql -U infosec_user -d infosec_db -h localhost -f schema_raci.sql
+psql -U infosec_user -d infosec_db -h localhost -f schema_ldap.sql
 ```
 
 ### Verify — must show 36 tables
 
 ```bash
 psql -U infosec_user -d infosec_db -h localhost -c "\dt"
-# Expected: 35 rows
+# Expected: 36 rows
 ```
 
 ---
@@ -378,6 +379,7 @@ psql -U infosec_user -d infosec_db -h localhost -f schema_force_password.sql
 psql -U infosec_user -d infosec_db -h localhost -f schema_maturity.sql
 psql -U infosec_user -d infosec_db -h localhost -f schema_grc.sql
 psql -U infosec_user -d infosec_db -h localhost -f schema_raci.sql
+psql -U infosec_user -d infosec_db -h localhost -f schema_ldap.sql
 ```
 
 ### Table count is less than 36

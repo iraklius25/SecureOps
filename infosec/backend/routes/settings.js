@@ -97,6 +97,24 @@ router.post('/test-webhook', auth, requireRole('admin'), async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// POST /api/settings/ldap-test — verify LDAP connectivity with current (or provided) settings
+router.post('/ldap-test', auth, requireRole('admin'), async (req, res) => {
+  try {
+    const ldap = require('../services/ldap');
+    // Allow caller to pass overrides so the admin can test before saving
+    const overrides = {};
+    const fields = ['ldap_url','ldap_base_dn','ldap_bind_dn','ldap_bind_password',
+                    'ldap_user_filter','ldap_search_base','ldap_tls'];
+    for (const f of fields) {
+      if (req.body[f] !== undefined) overrides[f] = req.body[f];
+    }
+    const result = await ldap.testConnection(overrides);
+    res.json({ ok: true, message: 'Connected to LDAP server successfully' });
+  } catch (e) {
+    res.status(400).json({ ok: false, error: e.message });
+  }
+});
+
 // GET /api/settings/scheduled-reports
 router.get('/scheduled-reports', auth, requireRole('admin','analyst'), async (req, res) => {
   try {

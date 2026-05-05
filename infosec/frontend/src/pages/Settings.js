@@ -424,6 +424,189 @@ function BrandingTab() {
   );
 }
 
+/* ─── LDAP Tab ───────────────────────────────────── */
+function LDAPTab() {
+  const ROLE_OPTIONS = ['admin', 'analyst', 'auditor', 'viewer'];
+
+  const [form, setForm] = useState({
+    ldap_enabled: 'false',
+    ldap_url: '',
+    ldap_base_dn: '',
+    ldap_bind_dn: '',
+    ldap_bind_password: '',
+    ldap_user_filter: '(sAMAccountName={{username}})',
+    ldap_search_base: '',
+    ldap_tls: 'false',
+    ldap_default_role: 'viewer',
+    ldap_group_map: '{}',
+  });
+  const [groupMap,  setGroupMap]  = useState([]);  // [{ group:'', role:'' }]
+  const [loading,   setLoading]   = useState(true);
+  const [saving,    setSaving]    = useState(false);
+  const [testing,   setTesting]   = useState(false);
+  const [saved,     setSaved]     = useState(false);
+  const [msg,       setMsg]       = useState('');
+  const [msgType,   setMsgType]   = useState('');
+
+  useEffect(() => {
+    api.get('/settings').then(r => {
+      const kv = Object.fromEntries(r.data.map(x => [x.key, x.value]));
+      setForm(prev => ({ ...prev, ...kv }));
+      try {
+        const parsed = JSON.parse(kv.ldap_group_map || '{}');
+        setGroupMap(Object.entries(parsed).map(([group, role]) => ({ group, role })));
+      } catch { setGroupMap([]); }
+    }).catch(console.error).finally(() => setLoading(false));
+  }, []);
+
+  const set = k => e => setForm(p => ({ ...p, [k]: e.target.value }));
+  const setCheck = k => e => setForm(p => ({ ...p, [k]: e.target.checked ? 'true' : 'false' }));
+
+  const addGroupRow    = () => setGroupMap(p => [...p, { group: '', role: 'viewer' }]);
+  const removeGroupRow = i  => setGroupMap(p => p.filter((_, idx) => idx !== i));
+  const updateGroupRow = (i, field, val) => setGroupMap(p => p.map((r, idx) => idx === i ? { ...r, [field]: val } : r));
+
+  const save = async () => {
+    setSaving(true); setMsg('');
+    const mapObj = {};
+    groupMap.filter(r => r.group.trim()).forEach(r => { mapObj[r.group.trim()] = r.role; });
+    const payload = { ...form, ldap_group_map: JSON.stringify(mapObj) };
+    try {
+      await api.patch('/settings', payload);
+      setSaved(true); setMsg('LDAP settings saved.'); setMsgType('success');
+      setTimeout(() => { setSaved(false); setMsg(''); }, 3000);
+    } catch (ex) {
+      setMsg(ex.response?.data?.error || 'Save failed'); setMsgType('error');
+    } finally { setSaving(false); }
+  };
+
+  const testConn = async () => {
+    setTesting(true); setMsg(''); setMsgType('');
+    const mapObj = {};
+    groupMap.filter(r => r.group.trim()).forEach(r => { mapObj[r.group.trim()] = r.role; });
+    try {
+      await api.post('/settings/ldap-test', { ...form, ldap_group_map: JSON.stringify(mapObj) });
+      setMsg('Connected to LDAP server successfully.'); setMsgType('success');
+    } catch (ex) {
+      setMsg(ex.response?.data?.error || 'Connection failed'); setMsgType('error');
+    } finally { setTesting(false); }
+  };
+
+  if (loading) return <div className="empty-state"><div className="spinner" /></div>;
+
+  return (
+    <div className="card">
+      <div className="card-title" style={{ marginBottom: 4 }}>LDAP / Active Directory Authentication</div>
+      <div style={{ fontSize: 13, color: 'var(--text3)', marginBottom: 20 }}>
+        When enabled, users can sign in with their domain credentials. Local admin account always works as fallback.
+      </div>
+
+      {msg && (
+        <div className={`alert ${msgType === 'success' ? 'alert-success' : 'alert-error'}`} style={{ marginBottom: 16 }}>{msg}</div>
+      )}
+
+      {/* Enable toggle */}
+      <label style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 24, cursor: 'pointer' }}>
+        <input type="checkbox" checked={form.ldap_enabled === 'true'} onChange={setCheck('ldap_enabled')} />
+        <div>
+          <div style={{ fontWeight: 600 }}>Enable LDAP Authentication</div>
+          <div style={{ fontSize: 12, color: 'var(--text3)' }}>Allow domain users to log in with their AD credentials</div>
+        </div>
+      </label>
+
+      <fieldset disabled={form.ldap_enabled !== 'true'} style={{ border: 'none', padding: 0, margin: 0, opacity: form.ldap_enabled === 'true' ? 1 : 0.45 }}>
+        {/* Server */}
+        <div style={{ fontSize: 12, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--text3)', marginBottom: 10 }}>Server</div>
+        <div className="form-row">
+          <div className="form-group" style={{ flex: 2 }}>
+            <label>LDAP URL *</label>
+            <input value={form.ldap_url} onChange={set('ldap_url')} placeholder="ldap://dc.example.com:389  or  ldaps://dc.example.com:636" />
+          </div>
+          <div className="form-group" style={{ flex: 0, minWidth: 160 }}>
+            <label>STARTTLS</label>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 10, cursor: 'pointer' }}>
+              <input type="checkbox" checked={form.ldap_tls === 'true'} onChange={setCheck('ldap_tls')} />
+              <span style={{ fontSize: 13 }}>Enable STARTTLS</span>
+            </label>
+          </div>
+        </div>
+
+        <div className="form-group">
+          <label>Base DN *</label>
+          <input value={form.ldap_base_dn} onChange={set('ldap_base_dn')} placeholder="DC=example,DC=com" />
+        </div>
+
+        {/* Service account */}
+        <div style={{ fontSize: 12, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--text3)', margin: '20px 0 10px' }}>Service Account (for directory searches)</div>
+        <div className="form-row">
+          <div className="form-group">
+            <label>Bind DN *</label>
+            <input value={form.ldap_bind_dn} onChange={set('ldap_bind_dn')} placeholder="CN=svc-secureops,OU=Service Accounts,DC=example,DC=com" autoComplete="off" />
+          </div>
+          <div className="form-group">
+            <label>Bind Password *</label>
+            <input type="password" value={form.ldap_bind_password} onChange={set('ldap_bind_password')} placeholder="••••••••" autoComplete="new-password" />
+          </div>
+        </div>
+
+        {/* Search */}
+        <div style={{ fontSize: 12, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--text3)', margin: '20px 0 10px' }}>User Search</div>
+        <div className="form-row">
+          <div className="form-group">
+            <label>User Filter</label>
+            <input value={form.ldap_user_filter} onChange={set('ldap_user_filter')} placeholder="(sAMAccountName={{username}})" />
+            <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 4 }}>{'{{username}}'} is replaced with the login username at runtime.</div>
+          </div>
+          <div className="form-group">
+            <label>Search Base <span style={{ fontSize: 11, color: 'var(--text3)', fontWeight: 400 }}>(optional — defaults to Base DN)</span></label>
+            <input value={form.ldap_search_base} onChange={set('ldap_search_base')} placeholder="OU=Employees,DC=example,DC=com" />
+          </div>
+        </div>
+
+        {/* Role mapping */}
+        <div style={{ fontSize: 12, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--text3)', margin: '20px 0 10px' }}>Role Mapping</div>
+
+        <div className="form-group" style={{ maxWidth: 280 }}>
+          <label>Default Role <span style={{ fontSize: 11, color: 'var(--text3)', fontWeight: 400 }}>(for new LDAP users with no matching group)</span></label>
+          <select value={form.ldap_default_role} onChange={set('ldap_default_role')}>
+            {ROLE_OPTIONS.map(r => <option key={r} value={r}>{r}</option>)}
+          </select>
+        </div>
+
+        <div style={{ marginBottom: 6, fontSize: 13, fontWeight: 500 }}>Group → Role Mapping</div>
+        <div style={{ fontSize: 12, color: 'var(--text3)', marginBottom: 10 }}>
+          Map Active Directory group CNs (not full DNs) to SecureOps roles. First match wins.
+        </div>
+        {groupMap.map((row, i) => (
+          <div key={i} style={{ display: 'flex', gap: 8, marginBottom: 8, alignItems: 'center' }}>
+            <input
+              style={{ flex: 2 }}
+              placeholder="AD Group CN (e.g. SecureOps-Admins)"
+              value={row.group}
+              onChange={e => updateGroupRow(i, 'group', e.target.value)}
+            />
+            <span style={{ color: 'var(--text3)', fontSize: 18 }}>→</span>
+            <select style={{ flex: 1 }} value={row.role} onChange={e => updateGroupRow(i, 'role', e.target.value)}>
+              {ROLE_OPTIONS.map(r => <option key={r} value={r}>{r}</option>)}
+            </select>
+            <button className="btn btn-danger btn-sm" onClick={() => removeGroupRow(i)}>✕</button>
+          </div>
+        ))}
+        <button className="btn btn-secondary btn-sm" onClick={addGroupRow} style={{ marginBottom: 8 }}>+ Add Group Mapping</button>
+      </fieldset>
+
+      <div className="modal-footer" style={{ paddingLeft: 0, paddingRight: 0, marginTop: 20, gap: 10 }}>
+        <button className="btn btn-secondary" onClick={testConn} disabled={testing || form.ldap_enabled !== 'true' || !form.ldap_url}>
+          {testing ? 'Testing...' : 'Test Connection'}
+        </button>
+        <button className="btn btn-primary" onClick={save} disabled={saving}>
+          {saving ? 'Saving...' : 'Save LDAP Settings'}
+        </button>
+      </div>
+    </div>
+  );
+}
+
 /* ─── Main Settings Page ─────────────────────────── */
 export default function Settings() {
   const [settings,  setSettings]  = useState([]);
@@ -485,6 +668,7 @@ export default function Settings() {
     { key: 'threat-intel',     label: 'Threat Intelligence' },
     { key: 'scheduled-reports',label: 'Scheduled Reports' },
     { key: 'branding',         label: 'Branding' },
+    { key: 'ldap',             label: 'LDAP / Active Directory' },
   ];
 
   return (
@@ -665,6 +849,8 @@ export default function Settings() {
       )}
 
       {tab === 'branding' && <BrandingTab />}
+
+      {tab === 'ldap' && <LDAPTab />}
     </div>
   );
 }
