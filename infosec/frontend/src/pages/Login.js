@@ -9,6 +9,7 @@ export default function Login() {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [logoUrl, setLogoUrl] = useState(null);
+  const [showPw, setShowPw] = useState(false);
 
   // 2FA step state
   const [totpRequired, setTotpRequired] = useState(false);
@@ -81,14 +82,25 @@ export default function Login() {
             </div>
             <div className="form-group">
               <label>Password</label>
-              <input
-                type="password"
-                value={form.password}
-                onChange={e => setForm(p => ({ ...p, password: e.target.value }))}
-                required
-                placeholder="••••••••"
-                disabled={loading}
-              />
+              <div style={{ position: 'relative' }}>
+                <input
+                  type={showPw ? 'text' : 'password'}
+                  value={form.password}
+                  onChange={e => setForm(p => ({ ...p, password: e.target.value }))}
+                  required
+                  placeholder="••••••••"
+                  disabled={loading}
+                  style={{ paddingRight: 40, width: '100%', boxSizing: 'border-box' }}
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPw(v => !v)}
+                  style={{ position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text3)', padding: 0, fontSize: 16, lineHeight: 1 }}
+                  tabIndex={-1}
+                >
+                  {showPw ? '🙈' : '👁️'}
+                </button>
+              </div>
             </div>
             <button
               type="submit"

@@ -8,6 +8,8 @@ export default function ForceChangePassword() {
   const [form, setForm] = useState({ current: '', newPassword: '', confirm: '' });
   const [err, setErr] = useState('');
   const [loading, setLoading] = useState(false);
+  const [show, setShow] = useState({ current: false, newPassword: false, confirm: false });
+  const toggleShow = k => () => setShow(p => ({ ...p, [k]: !p[k] }));
   const set = k => e => setForm(p => ({ ...p, [k]: e.target.value }));
 
   const submit = async e => {
@@ -65,39 +67,35 @@ export default function ForceChangePassword() {
 
           {err && <div className="alert alert-error" style={{ marginBottom: 16 }}>{err}</div>}
 
-          <div className="form-group">
-            <label>Current Password</label>
-            <input
-              type="password"
-              value={form.current}
-              onChange={set('current')}
-              placeholder="Enter current password"
-              required
-              autoFocus
-            />
-          </div>
-          <div className="form-group">
-            <label>New Password <span style={{ fontSize: 11, color: 'var(--text3)' }}>(min 8 characters)</span></label>
-            <input
-              type="password"
-              value={form.newPassword}
-              onChange={set('newPassword')}
-              placeholder="Enter new password"
-              required
-              minLength={8}
-            />
-          </div>
-          <div className="form-group">
-            <label>Confirm New Password</label>
-            <input
-              type="password"
-              value={form.confirm}
-              onChange={set('confirm')}
-              placeholder="Repeat new password"
-              required
-              minLength={8}
-            />
-          </div>
+          {[
+            { key: 'current', label: 'Current Password', placeholder: 'Enter current password', autoFocus: true },
+            { key: 'newPassword', label: 'New Password', sublabel: '(min 8 characters)', placeholder: 'Enter new password', minLength: 8 },
+            { key: 'confirm', label: 'Confirm New Password', placeholder: 'Repeat new password', minLength: 8 },
+          ].map(({ key, label, sublabel, placeholder, autoFocus, minLength }) => (
+            <div className="form-group" key={key}>
+              <label>{label} {sublabel && <span style={{ fontSize: 11, color: 'var(--text3)' }}>{sublabel}</span>}</label>
+              <div style={{ position: 'relative' }}>
+                <input
+                  type={show[key] ? 'text' : 'password'}
+                  value={form[key]}
+                  onChange={set(key)}
+                  placeholder={placeholder}
+                  required
+                  autoFocus={autoFocus}
+                  minLength={minLength}
+                  style={{ paddingRight: 40, width: '100%', boxSizing: 'border-box' }}
+                />
+                <button
+                  type="button"
+                  onClick={toggleShow(key)}
+                  style={{ position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text3)', padding: 0, fontSize: 16, lineHeight: 1 }}
+                  tabIndex={-1}
+                >
+                  {show[key] ? '🙈' : '👁️'}
+                </button>
+              </div>
+            </div>
+          ))}
 
           <button
             type="submit"
