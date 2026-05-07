@@ -4,6 +4,7 @@ const jwt    = require('jsonwebtoken');
 const speakeasy = require('speakeasy');
 const db     = require('../db');
 const { auth } = require('../middleware/auth');
+const { validatePassword } = require('../utils/passwordPolicy');
 
 // POST /api/auth/login
 router.post('/login', async (req, res) => {
@@ -92,7 +93,8 @@ router.get('/me', auth, (req, res) => res.json(req.user));
 router.post('/change-password', auth, async (req, res) => {
   const { current, newPassword } = req.body;
   if (!current || !newPassword) return res.status(400).json({ error: 'Both passwords required' });
-  if (newPassword.length < 8) return res.status(400).json({ error: 'Password must be 8+ characters' });
+  const pwErr = validatePassword(newPassword);
+  if (pwErr) return res.status(400).json({ error: pwErr });
   try {
     const user = await db.query('SELECT password, auth_provider FROM users WHERE id=$1', [req.user.id]);
     if (user.rows[0]?.auth_provider === 'ldap') {

@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { api } from '../App';
 import { format } from 'date-fns';
+import PasswordStrength from '../components/PasswordStrength';
 
 export default function Users() {
   const [users, setUsers] = useState([]);
@@ -119,7 +120,7 @@ export default function Users() {
                       <option value="admin">Admin — full access</option>
                     </select>
                   </div>
-                  <div className="form-group"><label>Temporary Password *</label><input type="password" value={form.password} onChange={set('password')} required minLength={8} /></div>
+                  <div className="form-group"><label>Temporary Password *</label><input type="password" value={form.password} onChange={set('password')} required minLength={12} placeholder="Min 12 characters" /><PasswordStrength password={form.password} /></div>
                 </div>
               </div>
               <div className="modal-footer">
@@ -154,10 +155,11 @@ export default function Users() {
                     value={resetPw}
                     onChange={e=>setResetPw(e.target.value)}
                     required
-                    minLength={8}
-                    placeholder="Min 8 characters"
+                    minLength={12}
+                    placeholder="Min 12 characters"
                     autoFocus
                   />
+                  <PasswordStrength password={resetPw} />
                 </div>
               </div>
               <div className="modal-footer">

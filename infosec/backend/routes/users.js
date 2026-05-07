@@ -3,6 +3,7 @@ const router = require('express').Router();
 const bcrypt = require('bcryptjs');
 const db = require('../db');
 const { auth, requireRole } = require('../middleware/auth');
+const { validatePassword } = require('../utils/passwordPolicy');
 
 router.get('/', auth, requireRole('admin'), async (req, res) => {
   const r = await db.query('SELECT id,username,email,full_name,role,department,is_active,last_login,created_at FROM users ORDER BY created_at DESC');
@@ -12,6 +13,8 @@ router.get('/', auth, requireRole('admin'), async (req, res) => {
 router.post('/', auth, requireRole('admin'), async (req, res) => {
   const { username, email, password, full_name, role, department } = req.body;
   if (!username||!email||!password) return res.status(400).json({ error: 'username, email, password required' });
+  const pwErr = validatePassword(password);
+  if (pwErr) return res.status(400).json({ error: pwErr });
   try {
     const hash = await bcrypt.hash(password, 12);
     const r = await db.query(
@@ -27,7 +30,8 @@ router.post('/', auth, requireRole('admin'), async (req, res) => {
 
 router.post('/:id/reset-password', auth, requireRole('admin'), async (req, res) => {
   const { password } = req.body;
-  if (!password || password.length < 8) return res.status(400).json({ error: 'Password must be 8+ characters' });
+  const pwErr = validatePassword(password);
+  if (pwErr) return res.status(400).json({ error: pwErr });
   try {
     const hash = await bcrypt.hash(password, 12);
     await db.query(

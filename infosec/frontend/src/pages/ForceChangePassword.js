@@ -1,6 +1,7 @@
 import React, { useState, useContext } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api, AuthContext } from '../App';
+import PasswordStrength, { validatePassword } from '../components/PasswordStrength';
 
 export default function ForceChangePassword() {
   const { user, setUser } = useContext(AuthContext);
@@ -15,7 +16,8 @@ export default function ForceChangePassword() {
   const submit = async e => {
     e.preventDefault();
     setErr('');
-    if (form.newPassword.length < 8) return setErr('New password must be at least 8 characters');
+    const pwErr = validatePassword(form.newPassword);
+    if (pwErr) return setErr(pwErr);
     if (form.newPassword === form.current) return setErr('New password must be different from the current password');
     if (form.newPassword !== form.confirm) return setErr('Passwords do not match');
     setLoading(true);
@@ -37,7 +39,7 @@ export default function ForceChangePassword() {
       background: 'var(--bg1)', padding: 24,
     }}>
       <div style={{
-        width: '100%', maxWidth: 420, background: 'var(--bg2)',
+        width: '100%', maxWidth: 440, background: 'var(--bg2)',
         borderRadius: 'var(--radius-lg)', border: '1px solid var(--border2)',
         boxShadow: '0 8px 32px rgba(0,0,0,0.4)', overflow: 'hidden',
       }}>
@@ -61,41 +63,70 @@ export default function ForceChangePassword() {
             borderRadius: 'var(--radius)', padding: '10px 14px', marginBottom: 20,
             fontSize: 13, color: 'var(--text2)', lineHeight: 1.5,
           }}>
-            You are logged in with the default administrator password. For security, you must
+            You are logged in with a temporary password. For security, you must
             change it now. You cannot access the platform until this is done.
           </div>
 
           {err && <div className="alert alert-error" style={{ marginBottom: 16 }}>{err}</div>}
 
-          {[
-            { key: 'current', label: 'Current Password', placeholder: 'Enter current password', autoFocus: true },
-            { key: 'newPassword', label: 'New Password', sublabel: '(min 8 characters)', placeholder: 'Enter new password', minLength: 8 },
-            { key: 'confirm', label: 'Confirm New Password', placeholder: 'Repeat new password', minLength: 8 },
-          ].map(({ key, label, sublabel, placeholder, autoFocus, minLength }) => (
-            <div className="form-group" key={key}>
-              <label>{label} {sublabel && <span style={{ fontSize: 11, color: 'var(--text3)' }}>{sublabel}</span>}</label>
-              <div style={{ position: 'relative' }}>
-                <input
-                  type={show[key] ? 'text' : 'password'}
-                  value={form[key]}
-                  onChange={set(key)}
-                  placeholder={placeholder}
-                  required
-                  autoFocus={autoFocus}
-                  minLength={minLength}
-                  style={{ paddingRight: 40, width: '100%', boxSizing: 'border-box' }}
-                />
-                <button
-                  type="button"
-                  onClick={toggleShow(key)}
-                  style={{ position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text3)', padding: 0, fontSize: 16, lineHeight: 1 }}
-                  tabIndex={-1}
-                >
-                  {show[key] ? '🙈' : '👁️'}
-                </button>
-              </div>
+          {/* Current Password */}
+          <div className="form-group">
+            <label>Current Password</label>
+            <div style={{ position: 'relative' }}>
+              <input
+                type={show.current ? 'text' : 'password'}
+                value={form.current}
+                onChange={set('current')}
+                placeholder="Enter current password"
+                required
+                autoFocus
+                style={{ paddingRight: 40, width: '100%', boxSizing: 'border-box' }}
+              />
+              <button type="button" onClick={toggleShow('current')} tabIndex={-1}
+                style={{ position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text3)', padding: 0, fontSize: 16, lineHeight: 1 }}>
+                {show.current ? '🙈' : '👁️'}
+              </button>
             </div>
-          ))}
+          </div>
+
+          {/* New Password + strength meter */}
+          <div className="form-group">
+            <label>New Password</label>
+            <div style={{ position: 'relative' }}>
+              <input
+                type={show.newPassword ? 'text' : 'password'}
+                value={form.newPassword}
+                onChange={set('newPassword')}
+                placeholder="Min 12 characters"
+                required
+                style={{ paddingRight: 40, width: '100%', boxSizing: 'border-box' }}
+              />
+              <button type="button" onClick={toggleShow('newPassword')} tabIndex={-1}
+                style={{ position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text3)', padding: 0, fontSize: 16, lineHeight: 1 }}>
+                {show.newPassword ? '🙈' : '👁️'}
+              </button>
+            </div>
+            <PasswordStrength password={form.newPassword} />
+          </div>
+
+          {/* Confirm Password */}
+          <div className="form-group">
+            <label>Confirm New Password</label>
+            <div style={{ position: 'relative' }}>
+              <input
+                type={show.confirm ? 'text' : 'password'}
+                value={form.confirm}
+                onChange={set('confirm')}
+                placeholder="Repeat new password"
+                required
+                style={{ paddingRight: 40, width: '100%', boxSizing: 'border-box' }}
+              />
+              <button type="button" onClick={toggleShow('confirm')} tabIndex={-1}
+                style={{ position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text3)', padding: 0, fontSize: 16, lineHeight: 1 }}>
+                {show.confirm ? '🙈' : '👁️'}
+              </button>
+            </div>
+          </div>
 
           <button
             type="submit"
