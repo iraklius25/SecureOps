@@ -1,4 +1,4 @@
-require('dotenv').config();
+require('dotenv').config({ path: require('path').join(__dirname, '.env') });
 const bcrypt = require('bcryptjs');
 const { Pool } = require('pg');
 
@@ -10,7 +10,7 @@ async function seed() {
   await db.query(`
     INSERT INTO users (username, email, password, full_name, role, force_password_change)
     VALUES ('admin', 'admin@company.local', $1, 'System Administrator', 'admin', TRUE)
-    ON CONFLICT (username) DO NOTHING
+    ON CONFLICT (username) DO UPDATE SET password = EXCLUDED.password, force_password_change = TRUE
   `, [hash]);
   console.log('✓ Admin user created: admin / Admin@123!');
   console.log('  !! Change password immediately after first login !!');
