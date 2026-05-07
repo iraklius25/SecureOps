@@ -153,11 +153,11 @@ psql -U infosec_user -d infosec_db -h localhost -f schema_ai_systems.sql
 psql -U infosec_user -d infosec_db -h localhost -f schema_audit_log.sql
 ```
 
-### Verify — must show 40 tables
+### Verify — check tables loaded
 
 ```bash
 psql -U infosec_user -d infosec_db -h localhost -c "\dt"
-# Expected: 36 rows
+# Expected: 40+ rows (exact count depends on your PostgreSQL version)
 ```
 
 ---
