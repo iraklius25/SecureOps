@@ -1,8 +1,25 @@
-const router = require('express').Router();
-const db = require('../db');
+const router  = require('express').Router();
+const https   = require('https');
+const db      = require('../db');
 const { auth, requireRole } = require('../middleware/auth');
 const { checkIP } = require('../services/threatintel');
-const logger = require('../services/logger');
+const logger  = require('../services/logger');
+
+// Promisified HTTPS GET — works on all Node.js 18+ without experimental flags
+function httpsGet(url, headers = {}) {
+  return new Promise((resolve, reject) => {
+    const req = https.get(url, { headers: { 'User-Agent': 'SecureOps/1.0', ...headers } }, res => {
+      let raw = '';
+      res.on('data', chunk => { raw += chunk; });
+      res.on('end', () => {
+        try { resolve({ status: res.statusCode, body: JSON.parse(raw) }); }
+        catch { reject(new Error('Invalid JSON from remote API')); }
+      });
+    });
+    req.on('error', reject);
+    req.setTimeout(20000, () => { req.destroy(); reject(new Error('Request timed out')); });
+  });
+}
 
 // GET /api/threat — list threat_intel table joined with assets
 router.get('/', auth, async (req, res) => {
@@ -130,17 +147,14 @@ router.post('/shodan', auth, requireRole('admin', 'analyst'), async (req, res) =
     const apiKey = keyRow.rows[0]?.value?.trim();
     if (!apiKey) return res.status(503).json({ error: 'Shodan API key not configured. Add it in Settings → Threat Intelligence.' });
 
-    const response = await fetch(`https://api.shodan.io/shodan/host/${encodeURIComponent(ip.trim())}?key=${apiKey}`);
-    if (response.status === 404) return res.status(404).json({ error: 'No Shodan data available for this IP.' });
-    if (!response.ok) {
-      const body = await response.json().catch(() => ({}));
-      return res.status(502).json({ error: body.error || 'Shodan API error' });
-    }
-    const data = await response.json();
-    res.json(data);
+    const url = `https://api.shodan.io/shodan/host/${encodeURIComponent(ip.trim())}?key=${apiKey}`;
+    const { status, body } = await httpsGet(url);
+    if (status === 404) return res.status(404).json({ error: 'No Shodan data available for this IP.' });
+    if (status !== 200) return res.status(502).json({ error: body.error || `Shodan API returned ${status}` });
+    res.json(body);
   } catch (e) {
     logger.error('Shodan lookup error:', e.message);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(502).json({ error: `Shodan lookup failed: ${e.message}` });
   }
 });
 
@@ -157,16 +171,13 @@ router.post('/nvd', auth, async (req, res) => {
     if (cveId) url += `cveId=${encodeURIComponent(cveId.trim())}`;
     else url += `keywordSearch=${encodeURIComponent(query.trim())}&resultsPerPage=20`;
 
-    const headers = { 'User-Agent': 'SecureOps/1.0' };
-    if (apiKey) headers['apiKey'] = apiKey;
-
-    const response = await fetch(url, { headers });
-    if (!response.ok) return res.status(502).json({ error: 'NVD API error — try again later' });
-    const data = await response.json();
-    res.json(data);
+    const extraHeaders = apiKey ? { apiKey } : {};
+    const { status, body } = await httpsGet(url, extraHeaders);
+    if (status !== 200) return res.status(502).json({ error: `NVD API returned ${status} — try again later` });
+    res.json(body);
   } catch (e) {
     logger.error('NVD lookup error:', e.message);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(502).json({ error: `NVD lookup failed: ${e.message}` });
   }
 });
 
