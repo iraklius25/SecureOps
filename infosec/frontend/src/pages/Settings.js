@@ -903,6 +903,21 @@ export default function Settings() {
             </div>
           </div>
 
+          <div className="form-group" style={{ marginTop: 20 }}>
+            <label>Shodan API Key <span style={{ fontSize: 11, color: 'var(--text3)', fontWeight: 400 }}>(optional)</span></label>
+            <input
+              type="password"
+              value={form.shodan_api_key || ''}
+              onChange={e => setForm(p => ({ ...p, shodan_api_key: e.target.value }))}
+              placeholder="Enter your Shodan API key"
+              autoComplete="new-password"
+            />
+            <div style={{ fontSize: 12, color: 'var(--text3)', marginTop: 4 }}>
+              Used for internet-facing asset lookups and exposure intelligence.
+              Get a key at <span style={{ color: 'var(--accent-h)' }}>account.shodan.io</span>
+            </div>
+          </div>
+
           <div className="modal-footer" style={{ paddingLeft: 0, paddingRight: 0, marginTop: 8 }}>
             <button className="btn btn-primary" onClick={save}>Save Settings</button>
           </div>
