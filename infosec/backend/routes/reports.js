@@ -3,6 +3,16 @@ const db     = require('../db');
 const { auth } = require('../middleware/auth');
 
 // ── Helpers ────────────────────────────────────────────────────
+function escapeHtml(str) {
+  if (str == null) return '';
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#x27;');
+}
+
 function toCSV(rows, columns) {
   const header = columns.map(c => `"${c.label}"`).join(',');
   const lines  = rows.map(row =>
@@ -221,10 +231,14 @@ router.get('/trends', auth, async (req, res) => {
 router.get('/html', async (req, res) => {
   const rawToken = req.query.token || req.headers.authorization?.replace('Bearer ', '');
   if (!rawToken) return res.status(401).json({ error: 'Unauthorized' });
-  try { require('jsonwebtoken').verify(rawToken, process.env.JWT_SECRET); }
+  try { require('jsonwebtoken').verify(rawToken, process.env.JWT_SECRET, { algorithms: ['HS256'] }); }
   catch { return res.status(401).json({ error: 'Invalid token' }); }
   try {
-    const sections = (req.query.sections || 'executive,ale,risks,assets,vulnstats').split(',');
+    const VALID_SECTIONS = new Set(['executive', 'ale', 'risks', 'assets', 'vulnstats']);
+    const sections = (req.query.sections || 'executive,ale,risks,assets,vulnstats')
+      .split(',')
+      .map(s => s.trim())
+      .filter(s => VALID_SECTIONS.has(s));
 
     const [assets, openVulns, topRisks, topALE, recentVulns, assetStats] = await Promise.all([
       db.query(`SELECT COUNT(*) total, COUNT(*) FILTER (WHERE status='active') active, COUNT(*) FILTER (WHERE criticality='critical') critical_count FROM assets`),
@@ -239,16 +253,17 @@ router.get('/html', async (req, res) => {
     const fmt$ = n => '$' + parseFloat(n || 0).toLocaleString('en-US', { maximumFractionDigits: 0 });
     const sevColor = s => ({ critical: '#d73a49', high: '#e36209', medium: '#b08800', low: '#28a745' }[s] || '#666');
 
+    const esc = escapeHtml;
     const sectionHtml = {
       executive: `
         <h2>Executive Summary</h2>
         <div style="display:flex;gap:24px;margin-bottom:24px">
           <div style="flex:1;background:#f6f8fa;border-radius:8px;padding:16px;text-align:center">
-            <div style="font-size:32px;font-weight:700">${assets.rows[0].total}</div>
+            <div style="font-size:32px;font-weight:700">${parseInt(assets.rows[0].total) || 0}</div>
             <div style="color:#666;font-size:13px">Total Assets</div>
           </div>
           <div style="flex:1;background:#ffeef0;border-radius:8px;padding:16px;text-align:center">
-            <div style="font-size:32px;font-weight:700;color:#d73a49">${assets.rows[0].critical_count}</div>
+            <div style="font-size:32px;font-weight:700;color:#d73a49">${parseInt(assets.rows[0].critical_count) || 0}</div>
             <div style="color:#666;font-size:13px">Critical Assets</div>
           </div>
           <div style="flex:1;background:#fff3cd;border-radius:8px;padding:16px;text-align:center">
@@ -260,8 +275,8 @@ router.get('/html', async (req, res) => {
           <thead><tr><th>Severity</th><th>Open Count</th><th>Total ALE</th></tr></thead>
           <tbody>${openVulns.rows.map(r => `
             <tr>
-              <td><span style="background:${sevColor(r.severity)};color:#fff;padding:2px 8px;border-radius:3px;font-size:12px;font-weight:600">${r.severity.toUpperCase()}</span></td>
-              <td>${r.cnt}</td>
+              <td><span style="background:${sevColor(r.severity)};color:#fff;padding:2px 8px;border-radius:3px;font-size:12px;font-weight:600">${esc(r.severity).toUpperCase()}</span></td>
+              <td>${parseInt(r.cnt) || 0}</td>
               <td style="font-weight:600;color:${r.severity === 'critical' ? '#d73a49' : '#333'}">${fmt$(r.total_ale)}</td>
             </tr>
           `).join('')}</tbody>
@@ -273,11 +288,11 @@ router.get('/html', async (req, res) => {
           <thead><tr><th>Vulnerability</th><th>Severity</th><th>Asset</th><th>ALE</th><th>CVE</th></tr></thead>
           <tbody>${topALE.rows.map(r => `
             <tr>
-              <td>${r.title}</td>
-              <td><span style="background:${sevColor(r.severity)};color:#fff;padding:2px 8px;border-radius:3px;font-size:12px">${r.severity}</span></td>
-              <td style="font-family:monospace">${r.ip_address || '—'}${r.hostname ? ` (${r.hostname})` : ''}</td>
+              <td>${esc(r.title)}</td>
+              <td><span style="background:${sevColor(r.severity)};color:#fff;padding:2px 8px;border-radius:3px;font-size:12px">${esc(r.severity)}</span></td>
+              <td style="font-family:monospace">${esc(r.ip_address) || '—'}${r.hostname ? ` (${esc(r.hostname)})` : ''}</td>
               <td style="font-weight:700;color:#d73a49">${fmt$(r.ale)}</td>
-              <td style="font-family:monospace;font-size:12px">${r.cve_id || '—'}</td>
+              <td style="font-family:monospace;font-size:12px">${esc(r.cve_id) || '—'}</td>
             </tr>
           `).join('')}</tbody>
         </table>`,
@@ -288,11 +303,11 @@ router.get('/html', async (req, res) => {
           <thead><tr><th>Score</th><th>Title</th><th>Level</th><th>Treatment</th><th>Asset</th></tr></thead>
           <tbody>${topRisks.rows.map(r => `
             <tr>
-              <td style="font-weight:700;font-size:18px;color:${r.risk_score >= 20 ? '#d73a49' : r.risk_score >= 12 ? '#e36209' : r.risk_score >= 6 ? '#b08800' : '#28a745'}">${r.risk_score}</td>
-              <td>${r.title}</td>
-              <td>${r.risk_level}</td>
-              <td>${r.treatment}</td>
-              <td style="font-family:monospace">${r.ip_address || '—'}</td>
+              <td style="font-weight:700;font-size:18px;color:${r.risk_score >= 20 ? '#d73a49' : r.risk_score >= 12 ? '#e36209' : r.risk_score >= 6 ? '#b08800' : '#28a745'}">${parseInt(r.risk_score) || 0}</td>
+              <td>${esc(r.title)}</td>
+              <td>${esc(r.risk_level)}</td>
+              <td>${esc(r.treatment)}</td>
+              <td style="font-family:monospace">${esc(r.ip_address) || '—'}</td>
             </tr>
           `).join('')}</tbody>
         </table>`,
@@ -302,7 +317,7 @@ router.get('/html', async (req, res) => {
         <table>
           <thead><tr><th>Asset Type</th><th>Count</th></tr></thead>
           <tbody>${assetStats.rows.map(r => `
-            <tr><td>${r.asset_type || 'Unknown'}</td><td>${r.cnt}</td></tr>
+            <tr><td>${esc(r.asset_type) || 'Unknown'}</td><td>${parseInt(r.cnt) || 0}</td></tr>
           `).join('')}</tbody>
         </table>`,
 
@@ -312,9 +327,9 @@ router.get('/html', async (req, res) => {
           <thead><tr><th>Title</th><th>Severity</th><th>Asset</th><th>Detected</th></tr></thead>
           <tbody>${recentVulns.rows.map(r => `
             <tr>
-              <td>${r.title}</td>
-              <td><span style="background:${sevColor(r.severity)};color:#fff;padding:2px 8px;border-radius:3px;font-size:12px">${r.severity}</span></td>
-              <td style="font-family:monospace">${r.ip_address || '—'}</td>
+              <td>${esc(r.title)}</td>
+              <td><span style="background:${sevColor(r.severity)};color:#fff;padding:2px 8px;border-radius:3px;font-size:12px">${esc(r.severity)}</span></td>
+              <td style="font-family:monospace">${esc(r.ip_address) || '—'}</td>
               <td>${r.detected_at ? new Date(r.detected_at).toLocaleDateString() : '—'}</td>
             </tr>
           `).join('')}</tbody>
@@ -347,7 +362,7 @@ router.get('/html', async (req, res) => {
 <body>
   <div class="report-header">
     <h1>🛡 SecureOps Security Report</h1>
-    <div class="meta">Generated: ${new Date().toLocaleString()} &nbsp;|&nbsp; Sections: ${sections.join(', ')}</div>
+    <div class="meta">Generated: ${new Date().toLocaleString()} &nbsp;|&nbsp; Sections: ${escapeHtml(sections.join(', '))}</div>
   </div>
   ${body}
   <div class="footer">SecureOps InfoSec Risk Management Platform &nbsp;|&nbsp; Confidential — For Internal Use Only</div>
