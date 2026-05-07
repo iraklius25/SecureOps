@@ -120,4 +120,54 @@ router.delete('/:ip', auth, requireRole('admin'), async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// POST /api/threat/shodan — Shodan host lookup
+router.post('/shodan', auth, requireRole('admin', 'analyst'), async (req, res) => {
+  const { ip } = req.body;
+  if (!ip || !/^(\d{1,3}\.){3}\d{1,3}$/.test(ip.trim()))
+    return res.status(400).json({ error: 'Valid IPv4 address required' });
+  try {
+    const keyRow = await db.query("SELECT value FROM settings WHERE key='shodan_api_key'");
+    const apiKey = keyRow.rows[0]?.value?.trim();
+    if (!apiKey) return res.status(503).json({ error: 'Shodan API key not configured. Add it in Settings → Threat Intelligence.' });
+
+    const response = await fetch(`https://api.shodan.io/shodan/host/${encodeURIComponent(ip.trim())}?key=${apiKey}`);
+    if (response.status === 404) return res.status(404).json({ error: 'No Shodan data available for this IP.' });
+    if (!response.ok) {
+      const body = await response.json().catch(() => ({}));
+      return res.status(502).json({ error: body.error || 'Shodan API error' });
+    }
+    const data = await response.json();
+    res.json(data);
+  } catch (e) {
+    logger.error('Shodan lookup error:', e.message);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// POST /api/threat/nvd — NVD CVE search
+router.post('/nvd', auth, async (req, res) => {
+  const { query, cveId } = req.body;
+  if (!query && !cveId) return res.status(400).json({ error: 'query or cveId required' });
+  if (query && query.length > 200) return res.status(400).json({ error: 'Query too long' });
+  try {
+    const keyRow = await db.query("SELECT value FROM settings WHERE key='nvd_api_key'");
+    const apiKey = keyRow.rows[0]?.value?.trim();
+
+    let url = 'https://services.nvd.nist.gov/rest/json/cves/2.0?';
+    if (cveId) url += `cveId=${encodeURIComponent(cveId.trim())}`;
+    else url += `keywordSearch=${encodeURIComponent(query.trim())}&resultsPerPage=20`;
+
+    const headers = { 'User-Agent': 'SecureOps/1.0' };
+    if (apiKey) headers['apiKey'] = apiKey;
+
+    const response = await fetch(url, { headers });
+    if (!response.ok) return res.status(502).json({ error: 'NVD API error — try again later' });
+    const data = await response.json();
+    res.json(data);
+  } catch (e) {
+    logger.error('NVD lookup error:', e.message);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 module.exports = router;
