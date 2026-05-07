@@ -27,6 +27,10 @@ Thumbs.db
 .vscode/
 .idea/
 
+# Claude Code local settings (contain machine-specific paths)
+.claude/settings.local.json
+**/.claude/settings.local.json
+
 # PM2
 .pm2/
 
