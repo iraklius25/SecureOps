@@ -15,7 +15,7 @@ router.post('/', auth, requireRole('admin'), async (req, res) => {
   try {
     const hash = await bcrypt.hash(password, 12);
     const r = await db.query(
-      'INSERT INTO users (username,email,password,full_name,role,department) VALUES ($1,$2,$3,$4,$5,$6) RETURNING id,username,email,role',
+      'INSERT INTO users (username,email,password,full_name,role,department,force_password_change) VALUES ($1,$2,$3,$4,$5,$6,TRUE) RETURNING id,username,email,role',
       [username,email,hash,full_name,role||'analyst',department]
     );
     res.status(201).json(r.rows[0]);
@@ -23,6 +23,19 @@ router.post('/', auth, requireRole('admin'), async (req, res) => {
     if (e.code==='23505') return res.status(409).json({ error: 'Username or email taken' });
     res.status(500).json({ error: e.message });
   }
+});
+
+router.post('/:id/reset-password', auth, requireRole('admin'), async (req, res) => {
+  const { password } = req.body;
+  if (!password || password.length < 8) return res.status(400).json({ error: 'Password must be 8+ characters' });
+  try {
+    const hash = await bcrypt.hash(password, 12);
+    await db.query(
+      'UPDATE users SET password=$1, force_password_change=TRUE WHERE id=$2',
+      [hash, req.params.id]
+    );
+    res.json({ message: 'Password reset — user will be prompted to change on next login' });
+  } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 router.patch('/:id', auth, requireRole('admin'), async (req, res) => {

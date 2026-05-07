@@ -5,8 +5,12 @@ import { format } from 'date-fns';
 export default function Users() {
   const [users, setUsers] = useState([]);
   const [modal, setModal] = useState(false);
+  const [resetModal, setResetModal] = useState(null); // user object
   const [form, setForm] = useState({ username:'', email:'', password:'', full_name:'', role:'analyst', department:'' });
+  const [resetPw, setResetPw] = useState('');
   const [err, setErr] = useState('');
+  const [resetErr, setResetErr] = useState('');
+  const [resetMsg, setResetMsg] = useState('');
   const [loading, setLoading] = useState(true);
   const set = k => e => setForm(p=>({...p,[k]:e.target.value}));
 
@@ -20,7 +24,19 @@ export default function Users() {
     try { await api.post('/users', form); setModal(false); load(); }
     catch(ex) { setErr(ex.response?.data?.error || 'Error'); }
   };
+
   const toggle = async (id, is_active) => { await api.patch(`/users/${id}`, { is_active }); load(); };
+
+  const openReset = (u) => { setResetModal(u); setResetPw(''); setResetErr(''); setResetMsg(''); };
+
+  const submitReset = async e => {
+    e.preventDefault(); setResetErr(''); setResetMsg('');
+    try {
+      const r = await api.post(`/users/${resetModal.id}/reset-password`, { password: resetPw });
+      setResetMsg(r.data.message);
+      setResetPw('');
+    } catch(ex) { setResetErr(ex.response?.data?.error || 'Error'); }
+  };
 
   return (
     <div>
@@ -58,10 +74,13 @@ export default function Users() {
                     <span className={`status-dot ${u.is_active?'dot-completed':'dot-pending'}`}/>
                     {u.is_active ? 'Active' : 'Disabled'}
                   </td>
-                  <td>
+                  <td style={{display:'flex',gap:6,flexWrap:'wrap'}}>
                     <button className={`btn btn-sm ${u.is_active?'btn-danger':'btn-secondary'}`}
                       onClick={() => toggle(u.id, !u.is_active)}>
                       {u.is_active ? 'Disable' : 'Enable'}
+                    </button>
+                    <button className="btn btn-sm btn-secondary" onClick={() => openReset(u)}>
+                      Reset Password
                     </button>
                   </td>
                 </tr>
@@ -71,6 +90,7 @@ export default function Users() {
         </div>
       </div>
 
+      {/* Add User Modal */}
       {modal && (
         <div className="modal-overlay" onClick={e=>e.target===e.currentTarget&&setModal(false)}>
           <div className="modal">
@@ -78,6 +98,9 @@ export default function Users() {
             <form onSubmit={submit}>
               <div className="modal-body">
                 {err && <div className="alert alert-error">{err}</div>}
+                <div className="alert" style={{background:'rgba(99,102,241,0.08)',border:'1px solid rgba(99,102,241,0.25)',borderRadius:'var(--radius)',padding:'8px 12px',fontSize:12,color:'var(--text2)',marginBottom:12}}>
+                  The user will be required to change this password on first login.
+                </div>
                 <div className="form-row">
                   <div className="form-group"><label>Username *</label><input value={form.username} onChange={set('username')} required /></div>
                   <div className="form-group"><label>Email *</label><input type="email" value={form.email} onChange={set('email')} required /></div>
@@ -96,12 +119,50 @@ export default function Users() {
                       <option value="admin">Admin — full access</option>
                     </select>
                   </div>
-                  <div className="form-group"><label>Password *</label><input type="password" value={form.password} onChange={set('password')} required minLength={8} /></div>
+                  <div className="form-group"><label>Temporary Password *</label><input type="password" value={form.password} onChange={set('password')} required minLength={8} /></div>
                 </div>
               </div>
               <div className="modal-footer">
                 <button type="button" className="btn btn-secondary" onClick={()=>setModal(false)}>Cancel</button>
                 <button type="submit" className="btn btn-primary">Create User</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Reset Password Modal */}
+      {resetModal && (
+        <div className="modal-overlay" onClick={e=>e.target===e.currentTarget&&setResetModal(null)}>
+          <div className="modal" style={{maxWidth:420}}>
+            <div className="modal-header">
+              <h2>Reset Password</h2>
+              <button className="modal-close" onClick={()=>setResetModal(null)}>✕</button>
+            </div>
+            <form onSubmit={submitReset}>
+              <div className="modal-body">
+                <div style={{marginBottom:14,fontSize:13,color:'var(--text2)'}}>
+                  Resetting password for <strong>{resetModal.full_name || resetModal.username}</strong> (@{resetModal.username}).
+                  The user will be required to change it on next login.
+                </div>
+                {resetErr && <div className="alert alert-error" style={{marginBottom:12}}>{resetErr}</div>}
+                {resetMsg && <div className="alert alert-success" style={{marginBottom:12}}>{resetMsg}</div>}
+                <div className="form-group">
+                  <label>New Temporary Password *</label>
+                  <input
+                    type="password"
+                    value={resetPw}
+                    onChange={e=>setResetPw(e.target.value)}
+                    required
+                    minLength={8}
+                    placeholder="Min 8 characters"
+                    autoFocus
+                  />
+                </div>
+              </div>
+              <div className="modal-footer">
+                <button type="button" className="btn btn-secondary" onClick={()=>setResetModal(null)}>Close</button>
+                <button type="submit" className="btn btn-primary">Reset Password</button>
               </div>
             </form>
           </div>
