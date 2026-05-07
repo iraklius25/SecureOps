@@ -4,7 +4,7 @@
  * Uses nmap under the hood (must be installed: apt install nmap)
  */
 
-const { exec } = require('child_process');
+const { execFile } = require('child_process');
 const net = require('net');
 const db = require('../db');
 const logger = require('./logger');
@@ -12,20 +12,28 @@ const { v4: uuidv4 } = require('uuid');
 const notifier = require('./notifier');
 
 // ── Nmap wrapper ──────────────────────────────────────────────
+// Uses execFile (not exec) — no shell is spawned, command injection impossible.
+// User-supplied options are inspected only via regex; no raw string is passed to the OS.
 function nmapScan(target, options = '') {
   return new Promise((resolve, reject) => {
-    // Extract timing flag from options so it overrides the default -T4
-    const timingMatch = options.match(/-T[0-5]/);
-    const timing = timingMatch ? timingMatch[0] : '-T4';
-    const extraOpts = options.replace(/-T[0-5]/, '').trim();
-    // Skip -sC and -O when -Pn light retry is used (avoids AV/IDS blocking)
-    const isLightScan = extraOpts.includes('-Pn') && extraOpts.includes('--version-intensity 3');
-    const cmd = isLightScan
-      ? `nmap -sV ${timing} ${extraOpts} -oX - ${target}`
-      : `nmap -sV -sC --version-intensity 5 ${timing} -O --osscan-guess ${extraOpts} -oX - ${target}`;
-    logger.info(`Running: ${cmd}`);
-    exec(cmd, { timeout: 300000, maxBuffer: 10 * 1024 * 1024 }, (err, stdout, stderr) => {
-      if (err && !stdout) return reject(new Error(`nmap failed: ${stderr}`));
+    const timingMatch = options.match(/-T([0-5])/);
+    const timing      = timingMatch ? `-T${timingMatch[1]}` : '-T4';
+    const isPn        = /\b-Pn\b/.test(options);
+    const isLightScan = isPn && /--version-intensity\s+[0-3]\b/.test(options);
+
+    const args = ['-sV'];
+    if (isLightScan) {
+      args.push('--version-intensity', '3');
+    } else {
+      args.push('-sC', '--version-intensity', '5', '-O', '--osscan-guess');
+    }
+    args.push(timing);
+    if (isPn) args.push('-Pn');
+    args.push('-oX', '-', target);
+
+    logger.info(`Running nmap on target: ${target}`);
+    execFile('nmap', args, { timeout: 300000, maxBuffer: 10 * 1024 * 1024 }, (err, stdout, stderr) => {
+      if (err && !stdout) return reject(new Error('nmap scan failed'));
       resolve(stdout);
     });
   });

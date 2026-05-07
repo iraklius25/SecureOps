@@ -11,16 +11,50 @@ const app = express();
 app.set('trust proxy', 1);
 
 // ── Security middleware ────────────────────────────────────────
-app.use(helmet());
+app.use(helmet({
+  contentSecurityPolicy: {
+    directives: {
+      defaultSrc: ["'self'"],
+      scriptSrc:  ["'self'"],
+      styleSrc:   ["'self'", "'unsafe-inline'"],
+      imgSrc:     ["'self'", 'data:', 'blob:'],
+      connectSrc: ["'self'"],
+      fontSrc:    ["'self'"],
+      objectSrc:  ["'none'"],
+      frameAncestors: ["'none'"],
+    },
+  },
+  crossOriginEmbedderPolicy: false,
+}));
 app.use(cors({
   origin: process.env.FRONTEND_URL || 'http://localhost:3000',
   credentials: true,
+  methods: ['GET','POST','PUT','PATCH','DELETE','OPTIONS'],
+  allowedHeaders: ['Content-Type','Authorization'],
 }));
-app.use(express.json({ limit: '10mb' }));
+app.use(express.json({ limit: '2mb' }));
 app.use(morgan('combined', { stream: { write: msg => logger.info(msg.trim()) } }));
 
-const limiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 2000 });
+// Global limiter — all API routes
+const limiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 500,
+  standardHeaders: true,
+  legacyHeaders: false,
+});
 app.use('/api/', limiter);
+
+// Strict limiter — login and TOTP endpoints (brute-force protection)
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 15,
+  skipSuccessfulRequests: true,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many attempts. Try again in 15 minutes.' },
+});
+app.use('/api/auth/login', authLimiter);
+app.use('/api/auth/totp-login', authLimiter);
 
 // ── Routes ─────────────────────────────────────────────────────
 app.use('/api/auth',           require('./routes/auth'));
@@ -50,16 +84,17 @@ app.use('/api/suppliers',      require('./routes/suppliers'));
 app.use('/api/ai-systems',     require('./routes/aiSystems'));
 app.use('/api/activity-log',   require('./routes/activityLog'));
 
-// ── Static uploads ──────────────────────────────────────────────
-app.use('/uploads', require('express').static(require('path').join(__dirname, 'uploads')));
+// ── Static uploads (auth-protected) ───────────────────────────
+const { auth: uploadAuth } = require('./middleware/auth');
+app.use('/uploads', uploadAuth, require('express').static(require('path').join(__dirname, 'uploads')));
 
 // ── Health check ───────────────────────────────────────────────
-app.get('/health', (req, res) => res.json({ status: 'ok', version: '1.0.0', time: new Date() }));
+app.get('/health', (req, res) => res.json({ status: 'ok' }));
 
 // ── Error handler ──────────────────────────────────────────────
 app.use((err, req, res, next) => {
   logger.error(`${err.status || 500} - ${err.message} - ${req.originalUrl}`);
-  res.status(err.status || 500).json({ error: err.message || 'Internal server error' });
+  res.status(err.status || 500).json({ error: 'Internal server error' });
 });
 
 // ── Per-minute cron: trigger scheduled scans & auto-stop ──────

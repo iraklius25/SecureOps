@@ -5,7 +5,8 @@ async function log(req, action, entityType, entityId, entityName, oldValue, newV
   try {
     const userId    = req.user?.id    || null;
     const username  = req.user?.username || null;
-    const ipAddress = req.headers['x-forwarded-for']?.split(',')[0].trim() || req.ip || null;
+    const rawIp     = req.headers['x-forwarded-for']?.split(',')[0].trim() || req.ip || '';
+    const ipAddress = /^[\d.a-fA-F:]{3,45}$/.test(rawIp) ? rawIp : null;
     const userAgent = req.headers['user-agent'] || null;
 
     await db.query(

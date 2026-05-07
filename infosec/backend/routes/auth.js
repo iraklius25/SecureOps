@@ -6,10 +6,40 @@ const db     = require('../db');
 const { auth } = require('../middleware/auth');
 const { validatePassword } = require('../utils/passwordPolicy');
 
+// ── Account lockout (in-memory, resets on restart) ────────────
+const LOCKOUT_MAX      = 5;   // failed attempts before lock
+const LOCKOUT_DURATION = 15 * 60 * 1000; // 15 minutes
+const loginAttempts    = new Map();
+
+function isLockedOut(key) {
+  const entry = loginAttempts.get(key);
+  if (!entry) return false;
+  if (entry.lockedUntil && Date.now() < entry.lockedUntil) return true;
+  if (entry.lockedUntil && Date.now() >= entry.lockedUntil) loginAttempts.delete(key);
+  return false;
+}
+
+function recordFailure(key) {
+  const entry = loginAttempts.get(key) || { count: 0, lockedUntil: null };
+  entry.count += 1;
+  if (entry.count >= LOCKOUT_MAX) {
+    entry.lockedUntil = Date.now() + LOCKOUT_DURATION;
+    entry.count = 0;
+  }
+  loginAttempts.set(key, entry);
+}
+
+function clearLockout(key) { loginAttempts.delete(key); }
+
 // POST /api/auth/login
 router.post('/login', async (req, res) => {
   const { username, password } = req.body;
   if (!username || !password) return res.status(400).json({ error: 'Username and password required' });
+  if (typeof username !== 'string' || username.length > 100) return res.status(400).json({ error: 'Invalid credentials' });
+
+  const lockKey = `login:${username.toLowerCase()}`;
+  if (isLockedOut(lockKey)) return res.status(429).json({ error: 'Account temporarily locked due to too many failed attempts. Try again in 15 minutes.' });
+
   try {
     const userResult = await db.query(
       'SELECT * FROM users WHERE username=$1 OR email=$1',
@@ -25,34 +55,37 @@ router.post('/login', async (req, res) => {
           const ldap = require('../services/ldap');
           const u = await ldap.authenticate(username, password);
           if (!u.is_active) return res.status(403).json({ error: 'Account disabled' });
-          const token = jwt.sign({ id: u.id, role: u.role }, process.env.JWT_SECRET, { expiresIn: '12h' });
+          clearLockout(lockKey);
+          const token = jwt.sign({ id: u.id, role: u.role }, process.env.JWT_SECRET, { algorithm: 'HS256', expiresIn: '12h' });
           return res.json({ token, user: { id: u.id, username: u.username, email: u.email, role: u.role, full_name: u.full_name, force_password_change: false } });
         } catch (ldapErr) {
-          // If we also have no local user, return 401
+          recordFailure(lockKey);
           if (!userResult.rows.length) return res.status(401).json({ error: 'Invalid credentials' });
-          // If local user exists with auth_provider=ldap, don't fall through
           if (userResult.rows[0].auth_provider === 'ldap') return res.status(401).json({ error: 'Invalid credentials' });
         }
       } else if (!userResult.rows.length) {
+        recordFailure(lockKey);
         return res.status(401).json({ error: 'Invalid credentials' });
       }
     }
 
     // ── Local (bcrypt) path ────────────────────────────────────────────────
     const u = userResult.rows[0];
-    if (!u) return res.status(401).json({ error: 'Invalid credentials' });
+    if (!u) { recordFailure(lockKey); return res.status(401).json({ error: 'Invalid credentials' }); }
     if (!u.is_active) return res.status(403).json({ error: 'Account disabled' });
     const valid = await bcrypt.compare(password, u.password);
-    if (!valid) return res.status(401).json({ error: 'Invalid credentials' });
+    if (!valid) { recordFailure(lockKey); return res.status(401).json({ error: 'Invalid credentials' }); }
+
+    clearLockout(lockKey);
 
     if (u.totp_enabled) {
       return res.json({ totp_required: true, user_id: u.id });
     }
 
     await db.query('UPDATE users SET last_login=NOW() WHERE id=$1', [u.id]);
-    const token = jwt.sign({ id: u.id, role: u.role }, process.env.JWT_SECRET, { expiresIn: '12h' });
+    const token = jwt.sign({ id: u.id, role: u.role }, process.env.JWT_SECRET, { algorithm: 'HS256', expiresIn: '12h' });
     res.json({ token, user: { id: u.id, username: u.username, email: u.email, role: u.role, full_name: u.full_name, force_password_change: u.force_password_change } });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { res.status(500).json({ error: 'Internal server error' }); }
 });
 
 // POST /api/auth/totp-login — complete 2FA login
@@ -81,9 +114,9 @@ router.post('/totp-login', async (req, res) => {
     if (!valid) return res.status(401).json({ error: 'Invalid 2FA code' });
 
     await db.query('UPDATE users SET last_login=NOW() WHERE id=$1', [u.id]);
-    const jwtToken = jwt.sign({ id: u.id, role: u.role }, process.env.JWT_SECRET, { expiresIn: '12h' });
+    const jwtToken = jwt.sign({ id: u.id, role: u.role }, process.env.JWT_SECRET, { algorithm: 'HS256', expiresIn: '12h' });
     res.json({ token: jwtToken, user: { id: u.id, username: u.username, email: u.email, role: u.role, full_name: u.full_name, force_password_change: u.force_password_change } });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { res.status(500).json({ error: 'Internal server error' }); }
 });
 
 // GET /api/auth/me
@@ -108,7 +141,7 @@ router.post('/change-password', auth, async (req, res) => {
       [hashed, req.user.id]
     );
     res.json({ message: 'Password updated' });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { res.status(500).json({ error: 'Internal server error' }); }
 });
 
 module.exports = router;

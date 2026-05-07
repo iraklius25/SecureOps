@@ -11,6 +11,10 @@ router.post('/', auth, requireRole('admin','analyst'), async (req, res) => {
   const ipPattern = /^(\d{1,3}\.){3}\d{1,3}(\/\d{1,2})?$|^(\d{1,3}\.){3}\d{1,3}-\d{1,3}$/;
   if (!ipPattern.test(target.trim())) return res.status(400).json({ error: 'Invalid target format. Use IP (192.168.1.1), CIDR (192.168.1.0/24) or range (192.168.1.1-254)' });
 
+  const VALID_SCAN_TYPES = ['full', 'service', 'light'];
+  if (!VALID_SCAN_TYPES.includes(scan_type)) return res.status(400).json({ error: 'Invalid scan_type' });
+  if (name && name.length > 100) return res.status(400).json({ error: 'Name too long' });
+
   try {
     const scanOptions = { nmapArgs };
     if (scheduledAt) {
