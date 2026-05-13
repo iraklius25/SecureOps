@@ -261,7 +261,7 @@ function ProgramsTab({ user }) {
 function DocumentsTab({ user }) {
   const [docs,       setDocs]       = useState([]);
   const [programs,   setPrograms]   = useState([]);
-  const [filter,     setFilter]     = useState({ category:'', status:'', search:'' });
+  const [filter,     setFilter]     = useState({ category:'', status:'', search:'', framework:'' });
   const [showForm,   setShowForm]   = useState(false);
   const [form,       setForm]       = useState({ program_id:'', title:'', category:'policy', doc_version:'1.0', status:'draft', owner:'', review_date:'', description:'' });
   const [file,       setFile]       = useState(null);
@@ -287,7 +287,11 @@ function DocumentsTab({ user }) {
   const filtered = docs.filter(d => {
     if (filter.category && d.category !== filter.category) return false;
     if (filter.status   && d.status   !== filter.status)   return false;
-    if (filter.search   && !d.title.toLowerCase().includes(filter.search.toLowerCase())) return false;
+    if (filter.search    && !d.title.toLowerCase().includes(filter.search.toLowerCase())) return false;
+    if (filter.framework) {
+      const prog = programs.find(p => p.id === d.program_id);
+      if (!prog || prog.framework !== filter.framework) return false;
+    }
     return true;
   });
 
@@ -477,17 +481,21 @@ function DocumentsTab({ user }) {
           <option value="">All statuses</option>
           {['draft','review','approved','published','retired'].map(s => <option key={s} value={s}>{cap(s)}</option>)}
         </select>
+        <select style={sel} value={filter.framework} onChange={e => setFilter(p=>({...p,framework:e.target.value}))}>
+          <option value="">All programs</option>
+          {FRAMEWORKS.map(f => <option key={f.id} value={f.id}>{f.label}</option>)}
+        </select>
         <span style={{ marginLeft:'auto', fontSize:13, color:'var(--text3)' }}>{filtered.length} document{filtered.length!==1?'s':''}</span>
       </div>
 
       <div style={{ overflowX:'auto' }}>
         <table style={tbl}>
           <thead>
-            <tr>{['Title','Category','Ver.','Status','Owner','Review Date','File','Actions'].map(h => <th key={h} style={th}>{h}</th>)}</tr>
+            <tr>{['Title','Program','Category','Ver.','Status','Owner','Review Date','File','Actions'].map(h => <th key={h} style={th}>{h}</th>)}</tr>
           </thead>
           <tbody>
             {filtered.length === 0 && (
-              <tr><td colSpan={8} style={{ ...td, textAlign:'center', color:'var(--text3)', padding:32 }}>No documents found</td></tr>
+              <tr><td colSpan={9} style={{ ...td, textAlign:'center', color:'var(--text3)', padding:32 }}>No documents found</td></tr>
             )}
             {filtered.map(d => (
               <tr key={d.id}>
@@ -496,6 +504,13 @@ function DocumentsTab({ user }) {
                   {d.description && <div style={{ fontSize:11, color:'var(--text3)', marginTop:2 }}>{d.description.slice(0,80)}{d.description.length>80?'…':''}</div>}
                   {d.approved_at && <div style={{ fontSize:10, color:'#10b981', marginTop:2 }}>✓ Approved {fmtDate(d.approved_at)} by {d.approved_by_username||'—'}</div>}
                 </td>
+                <td style={td}>{(() => {
+                  const prog = programs.find(p => p.id === d.program_id);
+                  const fw   = prog ? FRAMEWORKS.find(f => f.id === prog.framework) : null;
+                  return fw
+                    ? <span style={badge(fw.color)}>{fw.label}</span>
+                    : <span style={{ color:'var(--text3)', fontSize:12 }}>—</span>;
+                })()}</td>
                 <td style={td}><span style={badge('#6b7280')}>{d.category}</span></td>
                 <td style={td}><span style={{ fontSize:12, color:'var(--text3)' }}>v{d.doc_version}</span></td>
                 <td style={td}><span style={badge(DC[d.status]||'#6b7280')}>{d.status}</span></td>
