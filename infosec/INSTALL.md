@@ -281,7 +281,7 @@ sudo systemctl enable nginx
 
 ---
 
-## STEP 11 — Start the backend
+## STEP 11 — Start the backend and enable auto-start on reboot
 
 ```bash
 cd /opt/infosec/infosec/backend
@@ -290,7 +290,18 @@ pm2 save
 pm2 startup
 ```
 
-> **Important:** `pm2 startup` prints a `sudo env PATH=...` command. Copy and run that command exactly as printed — this makes the backend survive reboots.
+> **Critical — two-step process:** `pm2 startup` prints a long `sudo env PATH=...` command.
+> You **must copy and run that exact command** in your terminal, otherwise the backend will not
+> start after a VM reboot and you will see "Login failed" on the login screen.
+>
+> Example of what it prints (yours will differ — use the actual output):
+> ```
+> sudo env PATH=$PATH:/usr/local/bin pm2 startup systemd -u youruser --hp /home/youruser
+> ```
+> Copy it, paste it, press Enter, then verify with:
+> ```bash
+> pm2 list   # infosec-api should show: online
+> ```
 
 ---
 
@@ -357,6 +368,34 @@ Then rewrite `.pgpass` using **single quotes** to prevent shell expansion of `$`
 ```bash
 echo 'localhost:5432:infosec_db:infosec_user:YOUR_PASSWORD' > ~/.pgpass
 chmod 600 ~/.pgpass
+```
+
+### "Login failed" after every VM reboot
+
+The backend or database is not starting automatically. Diagnose in order:
+
+```bash
+# 1. Check PostgreSQL
+sudo systemctl status postgresql
+# If inactive → start it and enable auto-start:
+sudo systemctl start postgresql
+sudo systemctl enable postgresql
+
+# 2. Check the backend process
+pm2 list
+# If infosec-api is missing or errored:
+cd /opt/infosec/infosec/backend
+pm2 start server.js --name infosec-api
+pm2 save
+
+# 3. Re-run the startup hook (if pm2 startup was never completed)
+pm2 startup
+# Copy and run the sudo env PATH=... command it prints, then:
+pm2 save
+
+# 4. Confirm after next reboot
+pm2 list                          # infosec-api → online
+sudo systemctl status postgresql  # active (running)
 ```
 
 ### Backend won't start
