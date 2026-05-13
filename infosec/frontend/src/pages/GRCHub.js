@@ -1376,7 +1376,7 @@ function ReviewsTab({ user }) {
                       <span style={{ fontSize:11, color:'var(--text3)', fontWeight:600 }}>Agenda Coverage</span>
                       <span style={{ fontSize:12, fontWeight:700, color: covered===total?'#10b981':'var(--text2)' }}>{covered}/{total} items</span>
                     </div>
-                    <div style={{ height:5, background:'var(--surface3)', borderRadius:3, overflow:'hidden', marginBottom:6 }}>
+                    <div style={{ height:5, background:'var(--bg3)', border:'1px solid var(--border)', borderRadius:3, overflow:'hidden', marginBottom:6 }}>
                       <div style={{ height:'100%', width:`${(covered/total)*100}%`, background: covered===total?'#10b981':'#3b82f6', borderRadius:3, transition:'width 0.3s' }} />
                     </div>
                     <div style={{ display:'flex', flexWrap:'wrap', gap:5, marginTop:2 }}>
@@ -1384,13 +1384,14 @@ function ReviewsTab({ user }) {
                         const covered = r.agenda_checklist?.[item.key];
                         return (
                         <span key={item.key} style={{
-                          fontSize:11, padding:'3px 8px', borderRadius:10,
-                          display:'inline-flex', alignItems:'center', gap:4,
-                          background: covered ? 'rgba(16,185,129,0.12)' : 'rgba(139,148,158,0.08)',
-                          color: covered ? '#10b981' : 'var(--text2)',
-                          border: `1px solid ${covered ? 'rgba(16,185,129,0.3)' : 'var(--border)'}`,
+                          fontSize:12, padding:'4px 10px', borderRadius:10,
+                          display:'inline-flex', alignItems:'center', gap:5,
+                          background: covered ? 'rgba(16,185,129,0.15)' : 'var(--bg3)',
+                          color: covered ? '#10b981' : 'var(--text)',
+                          border: `1px solid ${covered ? 'rgba(16,185,129,0.4)' : 'var(--border2)'}`,
+                          fontWeight: covered ? 600 : 400,
                         }}>
-                          <span style={{ fontSize:10 }}>{covered ? '✓' : '○'}</span>
+                          <span style={{ fontSize:11 }}>{covered ? '✓' : '○'}</span>
                           {item.label}
                         </span>
                         );
