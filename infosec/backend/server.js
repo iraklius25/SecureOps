@@ -83,6 +83,7 @@ app.use('/api/grc',            require('./routes/grc'));
 app.use('/api/suppliers',      require('./routes/suppliers'));
 app.use('/api/ai-systems',     require('./routes/aiSystems'));
 app.use('/api/activity-log',   require('./routes/activityLog'));
+app.use('/api/metrics',        require('./routes/metrics'));
 
 // ── Static uploads (auth-protected) ───────────────────────────
 const { auth: uploadAuth } = require('./middleware/auth');
@@ -150,6 +151,19 @@ cron.schedule('0 * * * *', async () => {
       );
     }
   } catch (e) { logger.error('Scheduled reports error:', e.message); }
+});
+
+// ── KPI/KRI daily snapshot (01:00) ────────────────────────────
+cron.schedule('0 1 * * *', async () => {
+  logger.info('Saving daily KPI/KRI metric snapshot...');
+  try {
+    const { computeMetrics } = require('./routes/metrics');
+    const db2    = require('./db');
+    const values = await computeMetrics();
+    const rows   = Object.entries(values).map(([k, v]) => `('${k}', ${v}, NOW())`).join(',');
+    await db2.query(`INSERT INTO metric_snapshots (metric_key, value, snapped_at) VALUES ${rows}`);
+    logger.info(`KPI/KRI snapshot saved: ${Object.keys(values).length} metrics`);
+  } catch (e) { logger.error('Metrics snapshot error:', e.message); }
 });
 
 // ── Scheduled scans (daily at 02:00) ──────────────────────────
