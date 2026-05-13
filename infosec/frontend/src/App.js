@@ -17,7 +17,6 @@ import ApiKeys        from './pages/ApiKeys';
 import Settings       from './pages/Settings';
 import Patches        from './pages/Patches';
 import ThreatIntel    from './pages/ThreatIntel';
-import Topology       from './pages/Topology';
 import Approvals             from './pages/Approvals';
 import ForceChangePassword   from './pages/ForceChangePassword';
 import MaturityAssessment    from './pages/MaturityAssessment';
@@ -257,7 +256,6 @@ const NAV = [
   { path: '/metrics',       label: 'KPI / KRI',       icon: '📉', roles: ['admin','analyst','auditor'] },
   { path: '/threat',         label: 'Threat Intel',    icon: '🔥', roles: ['admin','analyst','auditor'] },
   { path: '/patches',        label: 'Patch Tracker',   icon: '🩹', roles: ['admin','analyst','auditor'] },
-  { path: '/topology',       label: 'Network Map',     icon: '🗺', roles: ['admin','analyst','auditor','viewer'] },
   { path: '/approvals',      label: 'Approvals',       icon: '🔔', roles: ['admin','analyst'] },
   { path: '/users',          label: 'Users',           icon: '👤', roles: ['admin'] },
   { path: '/groups/users',   label: 'User Groups',     icon: '👥', roles: ['admin','analyst','auditor','viewer'] },
@@ -501,7 +499,6 @@ export default function App() {
           <Route path="/metrics"    element={<PrivateRoute roles={['admin','analyst','auditor']}><Metrics /></PrivateRoute>} />
           <Route path="/threat" element={<PrivateRoute roles={['admin','analyst','auditor']}><ThreatIntel /></PrivateRoute>} />
           <Route path="/patches" element={<PrivateRoute roles={['admin','analyst','auditor']}><Patches /></PrivateRoute>} />
-          <Route path="/topology" element={<PrivateRoute><Topology /></PrivateRoute>} />
           <Route path="/approvals" element={<PrivateRoute roles={['admin','analyst']}><Approvals /></PrivateRoute>} />
           <Route path="/users" element={<PrivateRoute roles={['admin']}><Users /></PrivateRoute>} />
           <Route path="/groups/users"  element={<PrivateRoute><Groups defaultTab="users"  /></PrivateRoute>} />

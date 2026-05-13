@@ -3,6 +3,11 @@ import { api } from '../App';
 
 const TREAT = ['mitigate','accept','transfer','avoid'];
 
+const CATEGORIES = [
+  'Technical', 'Operational', 'Compliance', 'Strategic',
+  'Third Party', 'Financial', 'Reputational', 'Legal', 'Human',
+];
+
 const MAPPING_STATUS = ['not_assessed','partial','compliant','non_compliant'];
 const MAPPING_LABELS = {
   not_assessed: 'Not Assessed',
@@ -373,8 +378,10 @@ export function Risks() {
     title:'', description:'', category:'',
     likelihood:3, impact:3, treatment:'mitigate',
   });
-  const [loading,  setLoading]  = useState(true);
-  const [appetite, setAppetite] = useState(null);
+  const [loading,    setLoading]    = useState(true);
+  const [appetite,   setAppetite]   = useState(null);
+  const [filterCat,  setFilterCat]  = useState('');
+  const [filterStatus, setFilterStatus] = useState('');
   const set = k => e => setForm(p => ({ ...p, [k]: e.target.value }));
 
   const load = useCallback(() => {
@@ -431,6 +438,19 @@ export function Risks() {
       )}
 
       {tab === 'list' && (
+        <>
+          <div className="filter-bar">
+            <select className="filter-select" value={filterCat} onChange={e => setFilterCat(e.target.value)}>
+              <option value="">All Categories</option>
+              {CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
+            </select>
+            <select className="filter-select" value={filterStatus} onChange={e => setFilterStatus(e.target.value)}>
+              <option value="">All Statuses</option>
+              <option value="open">Open</option>
+              <option value="in_progress">In Progress</option>
+              <option value="closed">Closed</option>
+            </select>
+          </div>
         <div className="card" style={{ padding: 0 }}>
           <div className="table-wrap">
             {loading ? (
@@ -447,7 +467,10 @@ export function Risks() {
                   </tr>
                 </thead>
                 <tbody>
-                  {risks.map(r => (
+                  {risks.filter(r =>
+                    (!filterCat    || (r.category || '') === filterCat) &&
+                    (!filterStatus || (r.status   || 'open') === filterStatus)
+                  ).map(r => (
                     <tr key={r.id}>
                       <td><div className={`risk-score ${scoreColorClass(r.risk_score)}`}>{r.risk_score}</div></td>
                       <td style={{ maxWidth: 260 }}>
@@ -513,6 +536,7 @@ export function Risks() {
             )}
           </div>
         </div>
+        </>
       )}
 
       {/* ── Add Risk Modal ── */}
@@ -531,7 +555,10 @@ export function Risks() {
                 </div>
                 <div className="form-group">
                   <label>Category</label>
-                  <input value={form.category} onChange={set('category')} placeholder="Technical, Operational, Compliance..." />
+                  <select value={form.category} onChange={set('category')}>
+                    <option value="">— Select category —</option>
+                    {CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
+                  </select>
                 </div>
                 <div className="form-group">
                   <label>Description</label>
