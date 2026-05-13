@@ -5,10 +5,16 @@ const { auth, requireRole } = require('../middleware/auth');
 const { checkIP } = require('../services/threatintel');
 const logger  = require('../services/logger');
 
-// Promisified HTTPS GET — works on all Node.js 18+ without experimental flags
+// Promisified HTTPS GET — works on all Node.js 18+ without experimental flags.
+// rejectUnauthorized defaults to false to handle corporate SSL-inspection proxies
+// that replace external certificates with their own CA-signed ones. Set
+// HTTPS_REJECT_UNAUTHORIZED=true in .env to enable strict TLS verification.
+const rejectUnauthorized = process.env.HTTPS_REJECT_UNAUTHORIZED === 'true';
+const tlsAgent = new https.Agent({ rejectUnauthorized });
+
 function httpsGet(url, headers = {}) {
   return new Promise((resolve, reject) => {
-    const req = https.get(url, { headers: { 'User-Agent': 'SecureOps/1.0', ...headers } }, res => {
+    const req = https.get(url, { agent: tlsAgent, headers: { 'User-Agent': 'SecureOps/1.0', ...headers } }, res => {
       let raw = '';
       res.on('data', chunk => { raw += chunk; });
       res.on('end', () => {
