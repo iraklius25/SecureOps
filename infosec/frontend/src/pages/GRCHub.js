@@ -1317,7 +1317,7 @@ function ReviewsTab({ user }) {
               <label style={{ fontWeight:600 }}>ISO 42001 Clause 9.3 Mandatory Agenda Items</label>
               <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:6, marginTop:6 }}>
                 {AGENDA_ITEMS.map(item => (
-                  <label key={item.key} style={{ display:'flex', alignItems:'center', gap:8, fontSize:12, color:'var(--text2)', cursor:'pointer', padding:'4px 6px', borderRadius:4, background:'var(--surface3)' }}>
+                  <label key={item.key} style={{ display:'flex', alignItems:'center', gap:8, fontSize:12, color:'var(--text)', cursor:'pointer', padding:'6px 8px', borderRadius:4, background:'var(--bg3)', border:'1px solid var(--border)' }}>
                     <input
                       type="checkbox"
                       checked={!!(form.agenda_checklist && form.agenda_checklist[item.key])}
@@ -1379,16 +1379,28 @@ function ReviewsTab({ user }) {
                     <div style={{ height:5, background:'var(--surface3)', borderRadius:3, overflow:'hidden', marginBottom:6 }}>
                       <div style={{ height:'100%', width:`${(covered/total)*100}%`, background: covered===total?'#10b981':'#3b82f6', borderRadius:3, transition:'width 0.3s' }} />
                     </div>
-                    <div style={{ display:'flex', flexWrap:'wrap', gap:4 }}>
-                      {AGENDA_ITEMS.map(item => (
-                        <span key={item.key} title={item.label} style={{ fontSize:14, lineHeight:1, opacity: r.agenda_checklist[item.key] ? 1 : 0.25 }}>✓</span>
-                      ))}
+                    <div style={{ display:'flex', flexWrap:'wrap', gap:5, marginTop:2 }}>
+                      {AGENDA_ITEMS.map(item => {
+                        const covered = r.agenda_checklist?.[item.key];
+                        return (
+                        <span key={item.key} style={{
+                          fontSize:11, padding:'3px 8px', borderRadius:10,
+                          display:'inline-flex', alignItems:'center', gap:4,
+                          background: covered ? 'rgba(16,185,129,0.12)' : 'rgba(139,148,158,0.08)',
+                          color: covered ? '#10b981' : 'var(--text2)',
+                          border: `1px solid ${covered ? 'rgba(16,185,129,0.3)' : 'var(--border)'}`,
+                        }}>
+                          <span style={{ fontSize:10 }}>{covered ? '✓' : '○'}</span>
+                          {item.label}
+                        </span>
+                        );
+                      })}
                     </div>
                   </div>
                 );
               })()}
               {r.minutes_text && (
-                <div style={{ fontSize:13, color:'var(--text2)', background:'var(--surface3)', borderRadius:6, padding:'10px 14px', whiteSpace:'pre-wrap', maxHeight:120, overflow:'auto', lineHeight:1.5 }}>
+                <div style={{ fontSize:13, color:'var(--text)', background:'var(--bg3)', border:'1px solid var(--border)', borderRadius:6, padding:'10px 14px', whiteSpace:'pre-wrap', maxHeight:120, overflow:'auto', lineHeight:1.5 }}>
                   {r.minutes_text}
                 </div>
               )}
