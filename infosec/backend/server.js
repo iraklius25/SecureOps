@@ -84,6 +84,7 @@ app.use('/api/suppliers',      require('./routes/suppliers'));
 app.use('/api/ai-systems',     require('./routes/aiSystems'));
 app.use('/api/activity-log',   require('./routes/activityLog'));
 app.use('/api/metrics',        require('./routes/metrics'));
+app.use('/api/issc',           require('./routes/issc'));
 
 // ── Static uploads (auth-protected) ───────────────────────────
 const { auth: uploadAuth } = require('./middleware/auth');

@@ -373,13 +373,26 @@ export function Risks() {
     title:'', description:'', category:'',
     likelihood:3, impact:3, treatment:'mitigate',
   });
-  const [loading, setLoading] = useState(true);
+  const [loading,  setLoading]  = useState(true);
+  const [appetite, setAppetite] = useState(null);
   const set = k => e => setForm(p => ({ ...p, [k]: e.target.value }));
 
   const load = useCallback(() => {
     api.get('/risks').then(r => { setRisks(r.data); setLoading(false); });
   }, []);
   useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    api.get('/issc/appetite').then(r => setAppetite(r.data)).catch(() => {});
+  }, []);
+
+  const appetiteStatus = score => {
+    if (!appetite || score == null) return null;
+    const ap  = appetite.max_risk_score  ?? 12;
+    const tol = appetite.tolerance_score ?? 15;
+    if (score <= ap)  return { label: 'Within Appetite',  color: '#10b981', bg: '#10b98120' };
+    if (score <= tol) return { label: 'Within Tolerance', color: '#f59e0b', bg: '#f59e0b20' };
+    return              { label: 'Exceeds Tolerance',  color: '#ef4444', bg: '#ef444420' };
+  };
 
   const submit = async e => {
     e.preventDefault();
@@ -429,7 +442,7 @@ export function Risks() {
                 <thead>
                   <tr>
                     <th>Score</th><th>Risk</th><th>Category</th>
-                    <th>L</th><th>I</th><th>Level</th>
+                    <th>L</th><th>I</th><th>Level</th><th>Appetite</th>
                     <th>AI Act</th><th>Treatment</th><th>Asset</th><th>Status</th><th>Controls</th>
                   </tr>
                 </thead>
@@ -449,6 +462,13 @@ export function Risks() {
                       <td className="mono">{r.likelihood}</td>
                       <td className="mono">{r.impact}</td>
                       <td><span className={`badge badge-${r.risk_level}`}>{r.risk_level}</span></td>
+                      <td>
+                        {(() => {
+                          const st = appetiteStatus(r.risk_score);
+                          if (!st) return <span style={{ color:'var(--text3)', fontSize:12 }}>—</span>;
+                          return <span style={{ fontSize:11, fontWeight:600, padding:'2px 7px', borderRadius:10, background:st.bg, color:st.color, whiteSpace:'nowrap' }}>{st.label}</span>;
+                        })()}
+                      </td>
                       <td>
                         {r.eu_ai_act_tier ? (
                           <span style={{ fontSize:11, fontWeight:600, padding:'2px 7px', borderRadius:10, whiteSpace:'nowrap',

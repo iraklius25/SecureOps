@@ -2148,17 +2148,479 @@ function AISystemsTab({ user }) {
   );
 }
 
+/* ── Steering Committee Tab ───────────────────────────────────── */
+
+const ISSC_ROLES = ['Chair','Vice Chair','Secretary','Member','Advisor','Observer'];
+const MTG_TYPES  = ['regular','extraordinary','annual','emergency'];
+const MTG_STATUS = ['scheduled','completed','cancelled'];
+const ROLE_COLORS = { Chair:'#3b82f6', 'Vice Chair':'#8b5cf6', Secretary:'#10b981', Member:'#6b7280', Advisor:'#f59e0b', Observer:'#9ca3af' };
+
+function SteeringTab({ user }) {
+  const canEdit = ['admin'].includes(user?.role);
+  const [members,  setMembers]  = useState([]);
+  const [meetings, setMeetings] = useState([]);
+  const [section,  setSection]  = useState('members'); // 'members' | 'meetings'
+  const [showForm, setShowForm] = useState(false);
+  const [editing,  setEditing]  = useState(null);
+
+  const blankMember  = { full_name:'', title:'', department:'', email:'', role:'Member', joined_date:'', notes:'' };
+  const blankMeeting = { title:'', meeting_date:'', meeting_type:'regular', status:'scheduled', location:'', chair:'', quorum_met:false, attendees:'', agenda:'', minutes:'', decisions:'', action_items:'', next_meeting_date:'' };
+  const [form, setForm] = useState(blankMember);
+  const [err,  setErr]  = useState('');
+
+  const load = async () => {
+    try {
+      const [m, mt] = await Promise.all([api.get('/issc/members'), api.get('/issc/meetings')]);
+      setMembers(m.data); setMeetings(mt.data);
+    } catch {}
+  };
+  useEffect(() => { load(); }, []);
+
+  const switchSection = s => { setSection(s); setShowForm(false); setEditing(null); setErr(''); setForm(s === 'members' ? blankMember : blankMeeting); };
+
+  const submit = async e => {
+    e.preventDefault(); setErr('');
+    try {
+      const endpoint = section === 'members' ? '/issc/members' : '/issc/meetings';
+      if (editing) await api.put(`${endpoint}/${editing}`, form);
+      else         await api.post(endpoint, form);
+      setShowForm(false); setEditing(null); setForm(section === 'members' ? blankMember : blankMeeting); load();
+    } catch (ex) { setErr(ex.response?.data?.error || 'Save failed'); }
+  };
+
+  const del = async (id) => {
+    if (!window.confirm('Delete this record?')) return;
+    const endpoint = section === 'members' ? '/issc/members' : '/issc/meetings';
+    try { await api.delete(`${endpoint}/${id}`); load(); } catch {}
+  };
+
+  const startEdit = (row) => {
+    setEditing(row.id);
+    const f = section === 'members'
+      ? { full_name: row.full_name, title: row.title||'', department: row.department||'', email: row.email||'', role: row.role||'Member', joined_date: row.joined_date?.slice(0,10)||'', notes: row.notes||'' }
+      : { title: row.title, meeting_date: row.meeting_date?.slice(0,10)||'', meeting_type: row.meeting_type||'regular', status: row.status||'scheduled', location: row.location||'', chair: row.chair||'', quorum_met: row.quorum_met||false, attendees: row.attendees||'', agenda: row.agenda||'', minutes: row.minutes||'', decisions: row.decisions||'', action_items: row.action_items||'', next_meeting_date: row.next_meeting_date?.slice(0,10)||'' };
+    setForm(f); setShowForm(true);
+  };
+
+  const setF = k => e => setForm(p => ({ ...p, [k]: e.target.type === 'checkbox' ? e.target.checked : e.target.value }));
+
+  return (
+    <div>
+      <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:16 }}>
+        <div>
+          <h2 style={{ fontSize:18, fontWeight:700, margin:0, color:'var(--text)' }}>Information Security Steering Committee</h2>
+          <div style={{ fontSize:12, color:'var(--text2)', marginTop:3 }}>Governance body overseeing information security strategy and risk oversight</div>
+        </div>
+        {canEdit && (
+          <button style={btn('primary')} onClick={() => { setForm(section === 'members' ? blankMember : blankMeeting); setEditing(null); setShowForm(s => !s); }}>
+            + {section === 'members' ? 'Add Member' : 'Schedule Meeting'}
+          </button>
+        )}
+      </div>
+
+      {/* Section switcher */}
+      <div style={{ display:'flex', gap:4, marginBottom:16, borderBottom:'1px solid var(--border)', paddingBottom:0 }}>
+        {[{id:'members',label:`Members (${members.filter(m=>m.is_active).length})`},{id:'meetings',label:`Meetings (${meetings.length})`}].map(s => (
+          <button key={s.id} onClick={() => switchSection(s.id)}
+            style={{ padding:'7px 16px', fontSize:13, fontWeight: section===s.id ? 600 : 400, background:'none', border:'none', cursor:'pointer',
+              color: section===s.id ? 'var(--accent-h)' : 'var(--text2)',
+              borderBottom: section===s.id ? '2px solid var(--accent-h)' : '2px solid transparent', marginBottom:-1 }}>
+            {s.label}
+          </button>
+        ))}
+      </div>
+
+      {/* Form panel */}
+      {showForm && canEdit && (
+        <div style={{ ...card, marginBottom:20 }}>
+          <h3 style={{ fontSize:14, fontWeight:700, margin:'0 0 14px', color:'var(--text)' }}>{editing ? 'Edit' : 'Add'} {section === 'members' ? 'Member' : 'Meeting'}</h3>
+          <form onSubmit={submit}>
+            {err && <div style={{ color:'#ef4444', fontSize:13, marginBottom:10 }}>{err}</div>}
+            {section === 'members' ? (
+              <>
+                <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:12, marginBottom:12 }}>
+                  <div className="form-group"><label>Full Name *</label><input style={inp} value={form.full_name} onChange={setF('full_name')} required /></div>
+                  <div className="form-group"><label>Title / Position</label><input style={inp} value={form.title} onChange={setF('title')} placeholder="CISO, IT Director…" /></div>
+                  <div className="form-group"><label>Department</label><input style={inp} value={form.department} onChange={setF('department')} /></div>
+                </div>
+                <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:12, marginBottom:12 }}>
+                  <div className="form-group"><label>Email</label><input style={inp} type="email" value={form.email} onChange={setF('email')} /></div>
+                  <div className="form-group"><label>Committee Role</label>
+                    <select style={sel} value={form.role} onChange={setF('role')}>
+                      {ISSC_ROLES.map(r => <option key={r} value={r}>{r}</option>)}
+                    </select>
+                  </div>
+                  <div className="form-group"><label>Joined Date</label><input type="date" style={inp} value={form.joined_date} onChange={setF('joined_date')} /></div>
+                </div>
+                <div className="form-group"><label>Notes</label><textarea style={{ ...inp, height:70, resize:'vertical' }} value={form.notes} onChange={setF('notes')} /></div>
+              </>
+            ) : (
+              <>
+                <div style={{ display:'grid', gridTemplateColumns:'2fr 1fr 1fr 1fr', gap:12, marginBottom:12 }}>
+                  <div className="form-group"><label>Meeting Title *</label><input style={inp} value={form.title} onChange={setF('title')} required /></div>
+                  <div className="form-group"><label>Date *</label><input type="date" style={inp} value={form.meeting_date} onChange={setF('meeting_date')} required /></div>
+                  <div className="form-group"><label>Type</label>
+                    <select style={sel} value={form.meeting_type} onChange={setF('meeting_type')}>
+                      {MTG_TYPES.map(t => <option key={t} value={t}>{cap(t)}</option>)}
+                    </select>
+                  </div>
+                  <div className="form-group"><label>Status</label>
+                    <select style={sel} value={form.status} onChange={setF('status')}>
+                      {MTG_STATUS.map(s => <option key={s} value={s}>{cap(s)}</option>)}
+                    </select>
+                  </div>
+                </div>
+                <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:12, marginBottom:12 }}>
+                  <div className="form-group"><label>Chair</label><input style={inp} value={form.chair} onChange={setF('chair')} /></div>
+                  <div className="form-group"><label>Location / Link</label><input style={inp} value={form.location} onChange={setF('location')} /></div>
+                  <div className="form-group"><label>Next Meeting Date</label><input type="date" style={inp} value={form.next_meeting_date} onChange={setF('next_meeting_date')} /></div>
+                </div>
+                <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12, marginBottom:12 }}>
+                  <div className="form-group"><label>Attendees</label><textarea style={{ ...inp, height:70, resize:'vertical' }} value={form.attendees} onChange={setF('attendees')} placeholder="List of attendees" /></div>
+                  <div className="form-group"><label>Agenda</label><textarea style={{ ...inp, height:70, resize:'vertical' }} value={form.agenda} onChange={setF('agenda')} placeholder="Agenda items…" /></div>
+                </div>
+                <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12, marginBottom:12 }}>
+                  <div className="form-group"><label>Minutes / Notes</label><textarea style={{ ...inp, height:90, resize:'vertical' }} value={form.minutes} onChange={setF('minutes')} /></div>
+                  <div className="form-group"><label>Decisions Made</label><textarea style={{ ...inp, height:90, resize:'vertical' }} value={form.decisions} onChange={setF('decisions')} /></div>
+                </div>
+                <div className="form-group"><label>Action Items</label><textarea style={{ ...inp, height:70, resize:'vertical' }} value={form.action_items} onChange={setF('action_items')} /></div>
+                <label style={{ display:'flex', alignItems:'center', gap:8, fontSize:13, color:'var(--text)', marginBottom:12 }}>
+                  <input type="checkbox" checked={form.quorum_met} onChange={setF('quorum_met')} style={{ accentColor:'var(--accent)' }} /> Quorum met
+                </label>
+              </>
+            )}
+            <div style={{ display:'flex', gap:8, justifyContent:'flex-end' }}>
+              <button type="button" style={btn()} onClick={() => { setShowForm(false); setEditing(null); }}>Cancel</button>
+              <button type="submit" style={btn('primary')}>{editing ? 'Update' : 'Save'}</button>
+            </div>
+          </form>
+        </div>
+      )}
+
+      {/* Members table */}
+      {section === 'members' && (
+        <div style={{ overflowX:'auto' }}>
+          {members.length === 0
+            ? <div style={{ ...card, textAlign:'center', color:'var(--text2)', padding:32 }}>No members added yet</div>
+            : <table style={tbl}>
+                <thead><tr>{['Name','Title','Department','Email','Role','Joined',''].map(h => <th key={h} style={th}>{h}</th>)}</tr></thead>
+                <tbody>
+                  {members.map(m => (
+                    <tr key={m.id} style={{ opacity: m.is_active ? 1 : 0.45 }}>
+                      <td style={td}><div style={{ fontWeight:600, color:'var(--text)' }}>{m.full_name}</div>{!m.is_active && <span style={{ fontSize:10, color:'#ef4444' }}>Inactive</span>}</td>
+                      <td style={td}>{m.title||'—'}</td>
+                      <td style={td}>{m.department||'—'}</td>
+                      <td style={td}>{m.email ? <a href={`mailto:${m.email}`} style={{ color:'var(--accent-h)', textDecoration:'none' }}>{m.email}</a> : '—'}</td>
+                      <td style={td}><span style={{ ...badge(ROLE_COLORS[m.role]||'#6b7280') }}>{m.role}</span></td>
+                      <td style={td}>{m.joined_date ? fmtDate(m.joined_date) : '—'}</td>
+                      <td style={td}>
+                        {canEdit && <div style={{ display:'flex', gap:6 }}>
+                          <button style={{ ...btn(), padding:'4px 10px', fontSize:12 }} onClick={() => startEdit(m)}>Edit</button>
+                          <button style={{ ...btn('danger'), padding:'4px 10px', fontSize:12 }} onClick={() => del(m.id)}>Delete</button>
+                        </div>}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+          }
+        </div>
+      )}
+
+      {/* Meetings list */}
+      {section === 'meetings' && (
+        <div style={{ display:'flex', flexDirection:'column', gap:12 }}>
+          {meetings.length === 0 && <div style={{ ...card, textAlign:'center', color:'var(--text2)', padding:32 }}>No meetings scheduled yet</div>}
+          {meetings.map(m => {
+            const sc = { scheduled:'#6b7280', completed:'#10b981', cancelled:'#ef4444' };
+            return (
+              <div key={m.id} style={{ ...card, borderLeft:`4px solid ${sc[m.status]||'#6b7280'}` }}>
+                <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', flexWrap:'wrap', gap:8, marginBottom:10 }}>
+                  <div>
+                    <div style={{ fontWeight:700, fontSize:15, color:'var(--text)' }}>{m.title}</div>
+                    <div style={{ fontSize:12, color:'var(--text2)', marginTop:3 }}>
+                      {fmtDate(m.meeting_date)} · {cap(m.meeting_type)} · Chair: {m.chair||'—'}
+                      {m.location && ` · ${m.location}`}
+                    </div>
+                  </div>
+                  <div style={{ display:'flex', gap:8, alignItems:'center' }}>
+                    <span style={badge(sc[m.status]||'#6b7280')}>{cap(m.status)}</span>
+                    {m.quorum_met !== null && <span style={{ fontSize:11, color: m.quorum_met ? '#10b981' : '#ef4444' }}>{m.quorum_met ? '✓ Quorum' : '✗ No quorum'}</span>}
+                    {canEdit && <>
+                      <button style={{ ...btn(), padding:'4px 10px', fontSize:12 }} onClick={() => startEdit(m)}>Edit</button>
+                      <button style={{ ...btn('danger'), padding:'4px 10px', fontSize:12 }} onClick={() => del(m.id)}>Delete</button>
+                    </>}
+                  </div>
+                </div>
+                {m.agenda && <div style={{ marginBottom:8 }}><div style={{ fontSize:11, color:'var(--text3)', fontWeight:600, marginBottom:3 }}>AGENDA</div><div style={{ fontSize:13, color:'var(--text)', whiteSpace:'pre-wrap', lineHeight:1.5 }}>{m.agenda}</div></div>}
+                {m.decisions && <div style={{ marginBottom:8 }}><div style={{ fontSize:11, color:'var(--text3)', fontWeight:600, marginBottom:3 }}>DECISIONS</div><div style={{ fontSize:13, color:'var(--text)', whiteSpace:'pre-wrap', lineHeight:1.5 }}>{m.decisions}</div></div>}
+                {m.action_items && <div style={{ marginBottom:8 }}><div style={{ fontSize:11, color:'var(--text3)', fontWeight:600, marginBottom:3 }}>ACTION ITEMS</div><div style={{ fontSize:13, color:'var(--text)', whiteSpace:'pre-wrap', lineHeight:1.5 }}>{m.action_items}</div></div>}
+                {m.next_meeting_date && <div style={{ fontSize:12, color:'var(--text2)', marginTop:6 }}>Next meeting: <strong>{fmtDate(m.next_meeting_date)}</strong></div>}
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ── Risk Appetite & Tolerance Tab ────────────────────────────── */
+
+const CATEGORIES = ['Operational','Compliance','Reputational','Financial','Technology','Third-party'];
+const CAT_LEVELS = ['very_low','low','medium','high','very_high'];
+const CAT_COLORS = { very_low:'#10b981', low:'#3b82f6', medium:'#f59e0b', high:'#f97316', very_high:'#ef4444' };
+const CAT_LABELS = { very_low:'Very Low', low:'Low', medium:'Medium', high:'High', very_high:'Very High' };
+
+function AppetiteTab({ user }) {
+  const canEdit = user?.role === 'admin';
+  const [data,    setData]    = useState(null);
+  const [editing, setEditing] = useState(false);
+  const [form,    setForm]    = useState({});
+  const [err,     setErr]     = useState('');
+  const [saved,   setSaved]   = useState(false);
+
+  const load = async () => {
+    try { const r = await api.get('/issc/appetite'); setData(r.data); } catch {}
+  };
+  useEffect(() => { load(); }, []);
+
+  const startEdit = () => {
+    setForm({
+      max_risk_score:      data?.max_risk_score     ?? 12,
+      tolerance_score:     data?.tolerance_score    ?? 15,
+      max_ale:             data?.max_ale            ?? 100000,
+      tolerance_ale:       data?.tolerance_ale      ?? 250000,
+      max_open_critical:   data?.max_open_critical  ?? 0,
+      appetite_statement:  data?.appetite_statement ?? '',
+      tolerance_statement: data?.tolerance_statement?? '',
+      approved_by:         data?.approved_by        ?? '',
+      approval_date:       data?.approval_date?.slice(0,10) ?? '',
+      review_frequency:    data?.review_frequency   ?? 'annually',
+      category_appetites:  data?.category_appetites ?? {},
+      notes:               data?.notes              ?? '',
+    });
+    setEditing(true); setSaved(false); setErr('');
+  };
+
+  const save = async e => {
+    e.preventDefault(); setErr('');
+    try {
+      const r = await api.put('/issc/appetite', { ...form, max_risk_score: Number(form.max_risk_score), tolerance_score: Number(form.tolerance_score), max_ale: Number(form.max_ale), tolerance_ale: Number(form.tolerance_ale), max_open_critical: Number(form.max_open_critical) });
+      setData(r.data); setEditing(false); setSaved(true);
+      setTimeout(() => setSaved(false), 3000);
+    } catch (ex) { setErr(ex.response?.data?.error || 'Save failed'); }
+  };
+
+  const setF = k => e => setForm(p => ({ ...p, [k]: e.target.value }));
+  const setCat = (cat, val) => setForm(p => ({ ...p, category_appetites: { ...(p.category_appetites||{}), [cat]: val } }));
+
+  const appetiteScore    = data?.max_risk_score   ?? 12;
+  const toleranceScore   = data?.tolerance_score  ?? 15;
+
+  const getScoreLabel = score => {
+    if (score <= appetiteScore)  return { label:'Within Appetite',  color:'#10b981' };
+    if (score <= toleranceScore) return { label:'Within Tolerance', color:'#f59e0b' };
+    return                               { label:'Exceeds Tolerance',color:'#ef4444' };
+  };
+
+  return (
+    <div>
+      <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:16 }}>
+        <div>
+          <h2 style={{ fontSize:18, fontWeight:700, margin:0, color:'var(--text)' }}>Risk Appetite & Tolerance</h2>
+          <div style={{ fontSize:12, color:'var(--text2)', marginTop:3 }}>
+            Defines acceptable risk thresholds — reviewed {data?.review_frequency || 'annually'}
+            {data?.approved_by && ` · Approved by: ${data.approved_by}`}
+            {data?.approval_date && ` · ${fmtDate(data.approval_date)}`}
+          </div>
+        </div>
+        {canEdit && !editing && <button style={btn('primary')} onClick={startEdit}>Edit</button>}
+        {saved && <span style={{ fontSize:13, color:'#10b981' }}>✓ Saved</span>}
+      </div>
+
+      {!editing && data && (
+        <>
+          {/* Score scale */}
+          <div style={{ ...card, marginBottom:16 }}>
+            <div style={{ fontSize:13, fontWeight:700, color:'var(--text)', marginBottom:14 }}>Risk Score Thresholds</div>
+            <div style={{ position:'relative', height:40, marginBottom:20 }}>
+              <div style={{ position:'absolute', top:14, left:0, right:0, height:12, borderRadius:6, background:`linear-gradient(to right, #10b981 0%, #10b981 ${(appetiteScore/25)*100}%, #f59e0b ${(appetiteScore/25)*100}%, #f59e0b ${(toleranceScore/25)*100}%, #ef4444 ${(toleranceScore/25)*100}%, #ef4444 100%)` }} />
+              {[{ val: appetiteScore, label: 'Appetite', color:'#10b981' }, { val: toleranceScore, label: 'Tolerance', color:'#f59e0b' }].map(m => (
+                <div key={m.label} style={{ position:'absolute', top:0, left:`${(m.val/25)*100}%`, transform:'translateX(-50%)', textAlign:'center' }}>
+                  <div style={{ width:2, height:10, background:m.color, margin:'0 auto 2px' }} />
+                  <div style={{ fontSize:10, fontWeight:700, color:m.color, whiteSpace:'nowrap' }}>{m.label}: {m.val}</div>
+                </div>
+              ))}
+            </div>
+            <div style={{ display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:12 }}>
+              {[
+                { label:'Risk Appetite Score',    val: appetiteScore,    color:'#10b981', desc:`≤ ${appetiteScore} = acceptable` },
+                { label:'Risk Tolerance Score',   val: toleranceScore,   color:'#f59e0b', desc:`${appetiteScore+1}–${toleranceScore} = tolerated` },
+                { label:'Max Open Critical Risks',val: data.max_open_critical??0, color:'#ef4444', desc:'Target: zero critical risks' },
+              ].map(item => (
+                <div key={item.label} style={{ background:'var(--bg3)', borderRadius:8, padding:'12px 14px', borderLeft:`3px solid ${item.color}` }}>
+                  <div style={{ fontSize:11, color:'var(--text3)', marginBottom:4 }}>{item.label}</div>
+                  <div style={{ fontSize:24, fontWeight:700, color:item.color }}>{item.val}</div>
+                  <div style={{ fontSize:11, color:'var(--text2)' }}>{item.desc}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* ALE thresholds */}
+          <div style={{ ...card, marginBottom:16 }}>
+            <div style={{ fontSize:13, fontWeight:700, color:'var(--text)', marginBottom:12 }}>Financial Exposure Thresholds (ALE)</div>
+            <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12 }}>
+              <div style={{ background:'var(--bg3)', borderRadius:8, padding:'12px 14px', borderLeft:'3px solid #10b981' }}>
+                <div style={{ fontSize:11, color:'var(--text3)', marginBottom:4 }}>ALE Appetite</div>
+                <div style={{ fontSize:22, fontWeight:700, color:'#10b981' }}>${Number(data.max_ale||0).toLocaleString()}</div>
+                <div style={{ fontSize:11, color:'var(--text2)' }}>Maximum acceptable annual loss</div>
+              </div>
+              <div style={{ background:'var(--bg3)', borderRadius:8, padding:'12px 14px', borderLeft:'3px solid #f59e0b' }}>
+                <div style={{ fontSize:11, color:'var(--text3)', marginBottom:4 }}>ALE Tolerance</div>
+                <div style={{ fontSize:22, fontWeight:700, color:'#f59e0b' }}>${Number(data.tolerance_ale||0).toLocaleString()}</div>
+                <div style={{ fontSize:11, color:'var(--text2)' }}>Maximum tolerated annual loss</div>
+              </div>
+            </div>
+          </div>
+
+          {/* Statements */}
+          {(data.appetite_statement || data.tolerance_statement) && (
+            <div style={{ ...card, marginBottom:16 }}>
+              <div style={{ fontSize:13, fontWeight:700, color:'var(--text)', marginBottom:12 }}>Formal Statements</div>
+              {data.appetite_statement && (
+                <div style={{ marginBottom:12 }}>
+                  <div style={{ fontSize:11, color:'#10b981', fontWeight:700, marginBottom:4 }}>RISK APPETITE STATEMENT</div>
+                  <div style={{ fontSize:13, color:'var(--text)', lineHeight:1.6, background:'var(--bg3)', padding:'10px 14px', borderRadius:6, borderLeft:'3px solid #10b981' }}>{data.appetite_statement}</div>
+                </div>
+              )}
+              {data.tolerance_statement && (
+                <div>
+                  <div style={{ fontSize:11, color:'#f59e0b', fontWeight:700, marginBottom:4 }}>RISK TOLERANCE STATEMENT</div>
+                  <div style={{ fontSize:13, color:'var(--text)', lineHeight:1.6, background:'var(--bg3)', padding:'10px 14px', borderRadius:6, borderLeft:'3px solid #f59e0b' }}>{data.tolerance_statement}</div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Category appetites */}
+          {Object.keys(data.category_appetites||{}).length > 0 && (
+            <div style={{ ...card, marginBottom:16 }}>
+              <div style={{ fontSize:13, fontWeight:700, color:'var(--text)', marginBottom:12 }}>Risk Appetite by Category</div>
+              <div style={{ display:'flex', flexWrap:'wrap', gap:10 }}>
+                {CATEGORIES.filter(c => data.category_appetites[c]).map(c => {
+                  const lv = data.category_appetites[c];
+                  return <span key={c} style={{ ...badge(CAT_COLORS[lv]||'#6b7280'), fontSize:12, padding:'5px 12px' }}>{c}: {CAT_LABELS[lv]||lv}</span>;
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* Score legend */}
+          <div style={{ ...card }}>
+            <div style={{ fontSize:13, fontWeight:700, color:'var(--text)', marginBottom:12 }}>How Risks Are Classified</div>
+            <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
+              {[
+                { color:'#10b981', range:`0 – ${appetiteScore}`, label:'Within Appetite', desc:'Acceptable — no escalation required.' },
+                { color:'#f59e0b', range:`${appetiteScore+1} – ${toleranceScore}`, label:'Within Tolerance', desc:'Elevated — requires active treatment plan and regular review.' },
+                { color:'#ef4444', range:`${toleranceScore+1}+`, label:'Exceeds Tolerance', desc:'Unacceptable — immediate escalation to ISSC and board required.' },
+              ].map(row => (
+                <div key={row.label} style={{ display:'flex', alignItems:'center', gap:12, padding:'8px 12px', borderRadius:6, background:'var(--bg3)' }}>
+                  <div style={{ width:14, height:14, borderRadius:'50%', background:row.color, flexShrink:0 }} />
+                  <div style={{ minWidth:140, fontWeight:600, color:row.color, fontSize:13 }}>{row.label}</div>
+                  <div style={{ fontSize:12, color:'var(--text2)', minWidth:80 }}>Score: {row.range}</div>
+                  <div style={{ fontSize:12, color:'var(--text2)' }}>{row.desc}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </>
+      )}
+
+      {/* Edit form */}
+      {editing && (
+        <form onSubmit={save} style={{ ...card }}>
+          {err && <div style={{ color:'#ef4444', fontSize:13, marginBottom:12 }}>{err}</div>}
+          <div style={{ fontSize:14, fontWeight:700, color:'var(--text)', marginBottom:16 }}>Risk Score Thresholds</div>
+          <div style={{ display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:12, marginBottom:20 }}>
+            <div className="form-group"><label>Risk Appetite Score</label><input type="number" style={inp} value={form.max_risk_score} onChange={setF('max_risk_score')} min={1} max={25} /></div>
+            <div className="form-group"><label>Risk Tolerance Score</label><input type="number" style={inp} value={form.tolerance_score} onChange={setF('tolerance_score')} min={1} max={25} /></div>
+            <div className="form-group"><label>Max Open Critical Risks</label><input type="number" style={inp} value={form.max_open_critical} onChange={setF('max_open_critical')} min={0} /></div>
+          </div>
+
+          <div style={{ fontSize:14, fontWeight:700, color:'var(--text)', marginBottom:16 }}>Financial Thresholds (ALE)</div>
+          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12, marginBottom:20 }}>
+            <div className="form-group"><label>ALE Appetite ($)</label><input type="number" style={inp} value={form.max_ale} onChange={setF('max_ale')} min={0} /></div>
+            <div className="form-group"><label>ALE Tolerance ($)</label><input type="number" style={inp} value={form.tolerance_ale} onChange={setF('tolerance_ale')} min={0} /></div>
+          </div>
+
+          <div style={{ fontSize:14, fontWeight:700, color:'var(--text)', marginBottom:16 }}>Formal Statements</div>
+          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12, marginBottom:20 }}>
+            <div className="form-group"><label>Risk Appetite Statement</label><textarea style={{ ...inp, height:90, resize:'vertical' }} value={form.appetite_statement} onChange={setF('appetite_statement')} placeholder="The organisation accepts low operational risk…" /></div>
+            <div className="form-group"><label>Risk Tolerance Statement</label><textarea style={{ ...inp, height:90, resize:'vertical' }} value={form.tolerance_statement} onChange={setF('tolerance_statement')} placeholder="Temporary deviations above appetite are tolerable when…" /></div>
+          </div>
+
+          <div style={{ fontSize:14, fontWeight:700, color:'var(--text)', marginBottom:16 }}>Approval & Governance</div>
+          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:12, marginBottom:20 }}>
+            <div className="form-group"><label>Approved By</label><input style={inp} value={form.approved_by} onChange={setF('approved_by')} placeholder="Name / role" /></div>
+            <div className="form-group"><label>Approval Date</label><input type="date" style={inp} value={form.approval_date} onChange={setF('approval_date')} /></div>
+            <div className="form-group"><label>Review Frequency</label>
+              <select style={sel} value={form.review_frequency} onChange={setF('review_frequency')}>
+                {['monthly','quarterly','semi_annually','annually'].map(f => <option key={f} value={f}>{cap(humanize(f))}</option>)}
+              </select>
+            </div>
+          </div>
+
+          <div style={{ fontSize:14, fontWeight:700, color:'var(--text)', marginBottom:12 }}>Risk Appetite by Category</div>
+          <div style={{ display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:10, marginBottom:20 }}>
+            {CATEGORIES.map(c => (
+              <div className="form-group" key={c}>
+                <label>{c}</label>
+                <select style={sel} value={(form.category_appetites||{})[c]||''} onChange={e => setCat(c, e.target.value)}>
+                  <option value="">— Not set —</option>
+                  {CAT_LEVELS.map(l => <option key={l} value={l}>{CAT_LABELS[l]}</option>)}
+                </select>
+              </div>
+            ))}
+          </div>
+
+          <div className="form-group" style={{ marginBottom:20 }}>
+            <label>Additional Notes</label>
+            <textarea style={{ ...inp, height:70, resize:'vertical' }} value={form.notes} onChange={setF('notes')} />
+          </div>
+
+          <div style={{ display:'flex', gap:8, justifyContent:'flex-end' }}>
+            <button type="button" style={btn()} onClick={() => setEditing(false)}>Cancel</button>
+            <button type="submit" style={btn('primary')}>Save</button>
+          </div>
+        </form>
+      )}
+
+      {!data && !editing && (
+        <div style={{ ...card, textAlign:'center', color:'var(--text2)', padding:40 }}>
+          <div style={{ fontSize:32, marginBottom:12 }}>🎯</div>
+          <div style={{ fontWeight:600, marginBottom:8 }}>No risk appetite defined yet</div>
+          {canEdit && <button style={btn('primary')} onClick={startEdit}>Define Risk Appetite</button>}
+        </div>
+      )}
+    </div>
+  );
+}
+
 /* ── Main GRCHub ──────────────────────────────────────────────── */
 
 const TABS = [
-  { id:'programs',  label:'Programs',         icon:'🏗' },
-  { id:'documents', label:'Document Library', icon:'📁' },
-  { id:'controls',  label:'Control Register', icon:'🛡' },
-  { id:'tasks',     label:'Action Tracker',   icon:'✅' },
-  { id:'reviews',   label:'Reviews & Audits', icon:'📋' },
-  { id:'raci',      label:'RACI Matrices',    icon:'📊' },
-  { id:'suppliers', label:'Supplier Register',icon:'🏢' },
-  { id:'ai_systems',label:'AI Systems',       icon:'🤖' },
+  { id:'programs',  label:'Programs',           icon:'🏗' },
+  { id:'documents', label:'Document Library',   icon:'📁' },
+  { id:'controls',  label:'Control Register',   icon:'🛡' },
+  { id:'tasks',     label:'Action Tracker',     icon:'✅' },
+  { id:'reviews',   label:'Reviews & Audits',   icon:'📋' },
+  { id:'raci',      label:'RACI Matrices',      icon:'📊' },
+  { id:'suppliers', label:'Supplier Register',  icon:'🏢' },
+  { id:'ai_systems',label:'AI Systems',         icon:'🤖' },
+  { id:'steering',  label:'Steering Committee', icon:'👔' },
+  { id:'appetite',  label:'Risk Appetite',      icon:'🎯' },
 ];
 
 export default function GRCHub() {
@@ -2226,6 +2688,8 @@ export default function GRCHub() {
       {tab === 'raci'      && <RACITab      user={user} />}
       {tab === 'suppliers' && <SuppliersTab user={user} />}
       {tab === 'ai_systems'&& <AISystemsTab user={user} />}
+      {tab === 'steering'  && <SteeringTab  user={user} />}
+      {tab === 'appetite'  && <AppetiteTab  user={user} />}
     </div>
   );
 }

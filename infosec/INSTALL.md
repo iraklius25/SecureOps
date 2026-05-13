@@ -152,6 +152,7 @@ psql -U infosec_user -d infosec_db -h localhost -f schema_platform_v2.sql
 psql -U infosec_user -d infosec_db -h localhost -f schema_ai_systems.sql
 psql -U infosec_user -d infosec_db -h localhost -f schema_audit_log.sql
 psql -U infosec_user -d infosec_db -h localhost -f schema_metrics.sql
+psql -U infosec_user -d infosec_db -h localhost -f schema_governance.sql
 ```
 
 ### Verify — check tables loaded
@@ -429,6 +430,7 @@ psql -U infosec_user -d infosec_db -h localhost -f schema_platform_v2.sql
 psql -U infosec_user -d infosec_db -h localhost -f schema_ai_systems.sql
 psql -U infosec_user -d infosec_db -h localhost -f schema_audit_log.sql
 psql -U infosec_user -d infosec_db -h localhost -f schema_metrics.sql
+psql -U infosec_user -d infosec_db -h localhost -f schema_governance.sql
 ```
 
 ### Table count is less than 40
