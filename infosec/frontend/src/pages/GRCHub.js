@@ -279,25 +279,56 @@ function DocumentsTab({ user }) {
   const [viewingDoc,  setViewingDoc]  = useState(null);
   const [viewUrl,     setViewUrl]     = useState('');
   const [viewText,    setViewText]    = useState('');
+  const [viewHtml,    setViewHtml]    = useState('');
   const [viewLoading, setViewLoading] = useState(false);
 
   const openViewer = async doc => {
-    setViewingDoc(doc); setViewLoading(true); setViewUrl(''); setViewText('');
+    setViewingDoc(doc); setViewLoading(true);
+    setViewUrl(''); setViewText(''); setViewHtml('');
     try {
       const resp = await api.get(`/grc/documents/${doc.id}/download`, { responseType: 'blob' });
       const blob = resp.data;
-      if (doc.mimetype?.startsWith('text/') || /\.(txt|csv|json|md|xml|log)$/i.test(doc.original_name || '')) {
+      const mime = doc.mimetype || '';
+      const name = doc.original_name || '';
+
+      if (mime === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' ||
+          /\.docx$/i.test(name)) {
+        const mammoth     = await import('mammoth');
+        const arrayBuffer = await blob.arrayBuffer();
+        const result      = await mammoth.convertToHtml({ arrayBuffer });
+        setViewHtml(result.value);
+
+      } else if (
+        mime === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' ||
+        mime === 'application/vnd.ms-excel' ||
+        /\.(xlsx|xls)$/i.test(name)
+      ) {
+        const XLSX        = await import('xlsx');
+        const arrayBuffer = await blob.arrayBuffer();
+        const wb          = XLSX.read(arrayBuffer, { type: 'array' });
+        const parts = wb.SheetNames.map(sheetName => {
+          const ws   = wb.Sheets[sheetName];
+          const html = XLSX.utils.sheet_to_html(ws, { id: sheetName });
+          return `<h3 style="margin:18px 0 8px;font-size:13px;font-weight:700;color:#555;letter-spacing:.04em;text-transform:uppercase">${sheetName}</h3>${html}`;
+        });
+        setViewHtml(parts.join('<hr style="margin:24px 0;border:none;border-top:1px solid #ddd"/>'));
+
+      } else if (mime?.startsWith('text/') || /\.(txt|csv|json|md|xml|log)$/i.test(name)) {
         setViewText(await blob.text());
+
       } else {
         setViewUrl(URL.createObjectURL(blob));
       }
-    } catch { alert('Failed to load document'); setViewingDoc(null); }
-    finally { setViewLoading(false); }
+    } catch (e) {
+      console.error('Viewer error:', e);
+      alert('Failed to load document');
+      setViewingDoc(null);
+    } finally { setViewLoading(false); }
   };
 
   const closeViewer = () => {
     if (viewUrl) URL.revokeObjectURL(viewUrl);
-    setViewUrl(''); setViewText(''); setViewingDoc(null);
+    setViewUrl(''); setViewText(''); setViewHtml(''); setViewingDoc(null);
   };
 
   const load = async () => {
@@ -648,6 +679,20 @@ function DocumentsTab({ user }) {
                 }}>
                   {viewText}
                 </pre>
+              ) : viewHtml ? (
+                <div style={{ background: '#fff', minHeight: '80vh', padding: '32px 40px', overflowX: 'auto' }}>
+                  <style>{`
+                    .doc-body table { border-collapse: collapse; width: 100%; margin-bottom: 16px; font-size: 13px; }
+                    .doc-body td, .doc-body th { border: 1px solid #ccc; padding: 6px 10px; text-align: left; }
+                    .doc-body th { background: #f0f0f0; font-weight: 600; }
+                    .doc-body p { margin: 0 0 10px; line-height: 1.6; color: #222; font-size: 14px; }
+                    .doc-body h1,.doc-body h2,.doc-body h3,.doc-body h4 { margin: 18px 0 8px; color: #111; }
+                    .doc-body ul,.doc-body ol { margin: 0 0 10px 24px; color: #222; font-size: 14px; }
+                    .doc-body strong { font-weight: 700; }
+                    .doc-body em { font-style: italic; }
+                  `}</style>
+                  <div className="doc-body" dangerouslySetInnerHTML={{ __html: viewHtml }} />
+                </div>
               ) : (
                 <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: 300, gap: 16 }}>
                   <div style={{ fontSize: 48 }}>📄</div>
@@ -655,8 +700,12 @@ function DocumentsTab({ user }) {
                     Preview not available for this format
                   </div>
                   <div style={{ fontSize: 13, color: 'var(--text3)', textAlign: 'center', maxWidth: 380 }}>
-                    <strong>{viewingDoc.mimetype || 'This file type'}</strong> cannot be rendered in the browser.
-                    Use the Download button to open it in the appropriate application.
+                    <strong>{viewingDoc.original_name}</strong> is a{' '}
+                    {/\.pptx?$/i.test(viewingDoc.original_name || '') ? 'PowerPoint presentation' :
+                     /\.docm$/i.test(viewingDoc.original_name || '') ? 'macro-enabled Word document' :
+                     viewingDoc.mimetype || 'binary file'}{' '}
+                    that cannot be rendered in the browser.
+                    Download it to open in the appropriate application.
                   </div>
                   <button className="btn btn-primary" style={{ marginTop: 8 }}
                     onClick={async () => {

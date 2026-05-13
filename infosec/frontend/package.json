@@ -10,7 +10,8 @@
     "recharts": "^2.10.3",
     "axios": "^1.6.2",
     "date-fns": "^3.0.6",
-    "xlsx": "^0.18.5"
+    "xlsx": "^0.18.5",
+    "mammoth": "^1.8.0"
   },
   "scripts": {
     "start": "react-scripts start",
