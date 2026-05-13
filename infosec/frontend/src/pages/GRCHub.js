@@ -276,6 +276,30 @@ function DocumentsTab({ user }) {
   const editFileRef = useRef();
   const canEdit = ['admin','analyst'].includes(user?.role);
 
+  const [viewingDoc,  setViewingDoc]  = useState(null);
+  const [viewUrl,     setViewUrl]     = useState('');
+  const [viewText,    setViewText]    = useState('');
+  const [viewLoading, setViewLoading] = useState(false);
+
+  const openViewer = async doc => {
+    setViewingDoc(doc); setViewLoading(true); setViewUrl(''); setViewText('');
+    try {
+      const resp = await api.get(`/grc/documents/${doc.id}/download`, { responseType: 'blob' });
+      const blob = resp.data;
+      if (doc.mimetype?.startsWith('text/') || /\.(txt|csv|json|md|xml|log)$/i.test(doc.original_name || '')) {
+        setViewText(await blob.text());
+      } else {
+        setViewUrl(URL.createObjectURL(blob));
+      }
+    } catch { alert('Failed to load document'); setViewingDoc(null); }
+    finally { setViewLoading(false); }
+  };
+
+  const closeViewer = () => {
+    if (viewUrl) URL.revokeObjectURL(viewUrl);
+    setViewUrl(''); setViewText(''); setViewingDoc(null);
+  };
+
   const load = async () => {
     try {
       const [d, p] = await Promise.all([api.get('/grc/documents'), api.get('/grc/programs')]);
@@ -520,20 +544,26 @@ function DocumentsTab({ user }) {
                     ? <span style={{ color: isOverdue(d.review_date)?'#ef4444':'var(--text1)', fontSize:13 }}>{fmtDate(d.review_date)}</span>
                     : '—'}
                 </td>
-                <td style={td}>
-                  {d.stored_name
-                    ? <button className="btn btn-secondary btn-sm" style={{ fontSize:12 }} onClick={async () => {
-                        try {
-                          const resp = await api.get(`/grc/documents/${d.id}/download`, { responseType: 'blob' });
-                          const url  = URL.createObjectURL(resp.data);
-                          const a    = document.createElement('a');
-                          a.href     = url;
-                          a.download = d.original_name || 'document';
-                          a.click();
-                          URL.revokeObjectURL(url);
-                        } catch { alert('Download failed'); }
-                      }}>⬇ {fmtBytes(d.file_size)}</button>
-                    : <span style={{ color:'var(--text3)', fontSize:12 }}>No file</span>}
+                <td style={{ ...td, whiteSpace:'nowrap' }}>
+                  {d.stored_name ? (
+                    <div style={{ display:'flex', gap:6, flexWrap:'wrap' }}>
+                      <button className="btn btn-secondary btn-sm" style={{ fontSize:12 }}
+                        onClick={() => openViewer(d)}>
+                        👁 View
+                      </button>
+                      <button className="btn btn-secondary btn-sm" style={{ fontSize:12 }} onClick={async () => {
+                          try {
+                            const resp = await api.get(`/grc/documents/${d.id}/download`, { responseType: 'blob' });
+                            const url  = URL.createObjectURL(resp.data);
+                            const a    = document.createElement('a');
+                            a.href     = url;
+                            a.download = d.original_name || 'document';
+                            a.click();
+                            URL.revokeObjectURL(url);
+                          } catch { alert('Download failed'); }
+                        }}>⬇ {fmtBytes(d.file_size)}</button>
+                    </div>
+                  ) : <span style={{ color:'var(--text3)', fontSize:12 }}>No file</span>}
                 </td>
                 <td style={td}>
                   {canEdit && (
@@ -549,6 +579,103 @@ function DocumentsTab({ user }) {
           </tbody>
         </table>
       </div>
+
+      {/* Document Viewer Modal */}
+      {viewingDoc && (
+        <div className="modal-overlay" onClick={e => e.target === e.currentTarget && closeViewer()}
+          style={{ zIndex: 10000 }}>
+          <div style={{
+            background: 'var(--bg2)', borderRadius: 'var(--radius)',
+            width: '90vw', maxWidth: 1100, maxHeight: '92vh',
+            display: 'flex', flexDirection: 'column', overflow: 'hidden',
+            boxShadow: '0 16px 64px rgba(0,0,0,0.6)',
+          }}>
+            {/* Header */}
+            <div style={{
+              display: 'flex', alignItems: 'center', gap: 12,
+              padding: '14px 18px', borderBottom: '1px solid var(--border)',
+              flexShrink: 0,
+            }}>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontWeight: 700, fontSize: 15, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {viewingDoc.title}
+                </div>
+                <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 2 }}>
+                  {viewingDoc.original_name} · {fmtBytes(viewingDoc.file_size)}
+                  {viewingDoc.mimetype && <> · <span className="mono">{viewingDoc.mimetype}</span></>}
+                </div>
+              </div>
+              <button className="btn btn-secondary btn-sm" style={{ fontSize: 12, flexShrink: 0 }}
+                onClick={async () => {
+                  try {
+                    const resp = await api.get(`/grc/documents/${viewingDoc.id}/download`, { responseType: 'blob' });
+                    const url  = URL.createObjectURL(resp.data);
+                    const a    = document.createElement('a');
+                    a.href     = url;
+                    a.download = viewingDoc.original_name || 'document';
+                    a.click();
+                    URL.revokeObjectURL(url);
+                  } catch { alert('Download failed'); }
+                }}>⬇ Download</button>
+              <button className="modal-close" onClick={closeViewer}>✕</button>
+            </div>
+
+            {/* Body */}
+            <div style={{ flex: 1, overflow: 'auto', background: 'var(--bg3)', position: 'relative', minHeight: 200 }}>
+              {viewLoading ? (
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: 300 }}>
+                  <div className="spinner" />
+                </div>
+              ) : viewingDoc.mimetype === 'application/pdf' ? (
+                <iframe
+                  src={viewUrl}
+                  title={viewingDoc.title}
+                  style={{ width: '100%', height: '80vh', border: 'none', display: 'block' }}
+                />
+              ) : viewingDoc.mimetype?.startsWith('image/') ? (
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24, minHeight: 300 }}>
+                  <img
+                    src={viewUrl}
+                    alt={viewingDoc.title}
+                    style={{ maxWidth: '100%', maxHeight: '75vh', borderRadius: 4, boxShadow: '0 4px 24px rgba(0,0,0,0.3)' }}
+                  />
+                </div>
+              ) : viewText ? (
+                <pre style={{
+                  margin: 0, padding: 24, fontSize: 13, lineHeight: 1.6,
+                  whiteSpace: 'pre-wrap', wordBreak: 'break-word',
+                  color: 'var(--text1)', fontFamily: 'monospace', overflowX: 'auto',
+                }}>
+                  {viewText}
+                </pre>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: 300, gap: 16 }}>
+                  <div style={{ fontSize: 48 }}>📄</div>
+                  <div style={{ fontSize: 15, fontWeight: 600, color: 'var(--text1)' }}>
+                    Preview not available for this format
+                  </div>
+                  <div style={{ fontSize: 13, color: 'var(--text3)', textAlign: 'center', maxWidth: 380 }}>
+                    <strong>{viewingDoc.mimetype || 'This file type'}</strong> cannot be rendered in the browser.
+                    Use the Download button to open it in the appropriate application.
+                  </div>
+                  <button className="btn btn-primary" style={{ marginTop: 8 }}
+                    onClick={async () => {
+                      try {
+                        const resp = await api.get(`/grc/documents/${viewingDoc.id}/download`, { responseType: 'blob' });
+                        const url  = URL.createObjectURL(resp.data);
+                        const a    = document.createElement('a');
+                        a.href     = url;
+                        a.download = viewingDoc.original_name || 'document';
+                        a.click();
+                        URL.revokeObjectURL(url);
+                      } catch { alert('Download failed'); }
+                    }}>⬇ Download File</button>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
