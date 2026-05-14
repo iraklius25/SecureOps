@@ -358,13 +358,14 @@ export default function CertificationTracker() {
 
 /* ── Overview Tab ─────────────────────────────────────────────── */
 function OverviewTab({ certs, orgs, avgCompletion, overdue, canEdit, isAdmin, onRefresh }) {
-  const [showNewCert, setShowNewCert] = useState(false);
-  const [showNewOrg,  setShowNewOrg]  = useState(false);
-  const [filterFw,    setFilterFw]    = useState('');
-  const [filterStatus,setFilterStatus]= useState('');
+  const [showNewCert,  setShowNewCert]  = useState(false);
+  const [showNewOrg,   setShowNewOrg]   = useState(false);
+  const [showManageOrgs, setShowManageOrgs] = useState(false);
+  const [filterFw,     setFilterFw]     = useState('');
+  const [filterStatus, setFilterStatus] = useState('');
 
   const deleteOrg = async (id, name) => {
-    if (!window.confirm(`Delete organization "${name}"?\n\nCertifications linked to this organization will have their organization field cleared.`)) return;
+    if (!window.confirm(`Delete organization "${name}"?\n\nAll certifications linked to this organization will also be deleted.`)) return;
     try {
       await api.delete(`/certifications/organizations/${id}`);
       onRefresh();
@@ -407,7 +408,7 @@ function OverviewTab({ certs, orgs, avgCompletion, overdue, canEdit, isAdmin, on
       </div>
 
       {/* Toolbar */}
-      <div style={{ display:'flex', gap:10, marginBottom:20, flexWrap:'wrap', alignItems:'center' }}>
+      <div style={{ display:'flex', gap:10, marginBottom: showManageOrgs ? 12 : 20, flexWrap:'wrap', alignItems:'center' }}>
         <select style={{ ...sel, width:'auto', minWidth:140 }} value={filterFw} onChange={e => setFilterFw(e.target.value)}>
           <option value="">All Frameworks</option>
           {FRAMEWORKS.map(f => <option key={f.id} value={f.id}>{f.label}</option>)}
@@ -417,6 +418,14 @@ function OverviewTab({ certs, orgs, avgCompletion, overdue, canEdit, isAdmin, on
           {['active','paused','completed','cancelled'].map(s => <option key={s} value={s}>{s}</option>)}
         </select>
         <div style={{ flex:1 }} />
+        {isAdmin && (
+          <button style={{ ...btnS('default'), fontSize:12,
+                            color: showManageOrgs ? '#8b5cf6' : 'var(--text2)',
+                            border: showManageOrgs ? '1px solid #8b5cf6' : '1px solid var(--border2)' }}
+            onClick={() => setShowManageOrgs(s => !s)}>
+            🏢 Manage Organizations
+          </button>
+        )}
         {canEdit && (
           <>
             <button style={btnS('default')} onClick={() => setShowNewOrg(true)}>+ Organization</button>
@@ -424,6 +433,46 @@ function OverviewTab({ certs, orgs, avgCompletion, overdue, canEdit, isAdmin, on
           </>
         )}
       </div>
+
+      {/* Manage Organizations panel */}
+      {showManageOrgs && (
+        <div style={{ background:'var(--surface2)', border:'1px solid #8b5cf640', borderRadius:12,
+                      padding:16, marginBottom:20 }}>
+          <div style={{ fontSize:12, fontWeight:700, color:'#8b5cf6', textTransform:'uppercase',
+                        letterSpacing:'0.06em', marginBottom:12 }}>
+            All Organizations ({orgs.length})
+          </div>
+          {orgs.length === 0 ? (
+            <div style={{ fontSize:13, color:'var(--text3)' }}>No organizations yet.</div>
+          ) : (
+            <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill, minmax(260px,1fr))', gap:10 }}>
+              {orgs.map(o => {
+                const certCount = certs.filter(c => c.org_id === o.id).length;
+                return (
+                  <div key={o.id} style={{ background:'var(--surface3)', border:'1px solid var(--border2)',
+                                            borderRadius:8, padding:'10px 14px', display:'flex',
+                                            alignItems:'center', gap:10 }}>
+                    <div style={{ flex:1, minWidth:0 }}>
+                      <div style={{ fontSize:13, fontWeight:700, color:'var(--text1)',
+                                    overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
+                        🏢 {o.name}
+                      </div>
+                      <div style={{ fontSize:11, color:'var(--text3)', marginTop:2, display:'flex', gap:8 }}>
+                        {o.industry && <span>{o.industry}</span>}
+                        <span>{certCount} certification{certCount !== 1 ? 's' : ''}</span>
+                      </div>
+                    </div>
+                    <button style={{ ...btnS('danger'), padding:'3px 10px', fontSize:11, flexShrink:0 }}
+                      onClick={() => deleteOrg(o.id, o.name)}>
+                      Delete
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Certification cards grouped by org */}
       {Object.keys(byOrg).length === 0 ? (
