@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { api } from '../App';
+import React, { useState, useEffect, useContext } from 'react';
+import { api, AuthContext } from '../App';
 import {
   AreaChart, Area, BarChart, Bar, LineChart, Line,
   XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer
@@ -232,8 +232,113 @@ function ReportBuilderTab() {
   );
 }
 
+/* ─── Scheduled Reports Tab (admin only) ────────── */
+function ScheduledTab() {
+  const { user } = useContext(AuthContext);
+  const [rows,    setRows]    = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [err,     setErr]     = useState('');
+
+  const load = () => {
+    api.get('/reports/scheduled')
+      .then(r => { setRows(r.data); setLoading(false); })
+      .catch(e => { setErr(e.response?.data?.error || 'Failed to load'); setLoading(false); });
+  };
+
+  useEffect(() => { load(); }, []);
+
+  const del = async id => {
+    if (!window.confirm('Delete this scheduled report? This cannot be undone.')) return;
+    try {
+      await api.delete(`/reports/scheduled/${id}`);
+      load();
+    } catch (e) { alert(e.response?.data?.error || 'Delete failed'); }
+  };
+
+  const toggle = async (id, is_active) => {
+    try {
+      await api.patch(`/reports/scheduled/${id}`, { is_active: !is_active });
+      load();
+    } catch (e) { alert(e.response?.data?.error || 'Update failed'); }
+  };
+
+  if (loading) return <div className="empty-state"><div className="spinner"/></div>;
+  if (err)     return <div className="alert alert-error">{err}</div>;
+
+  if (user?.role !== 'admin') return (
+    <div className="empty-state">
+      <div className="empty-icon">🔒</div>
+      <p>Admin access required to manage scheduled reports.</p>
+    </div>
+  );
+
+  return (
+    <div>
+      <div style={{ marginBottom: 16, padding: '12px 16px', background: 'rgba(41,121,255,0.06)', border: '1px solid rgba(41,121,255,0.2)', borderRadius: 'var(--radius)', fontSize: 13, color: 'var(--text2)' }}>
+        Scheduled reports run automatically on the configured schedule. You can pause or permanently delete them here.
+      </div>
+
+      {rows.length === 0 ? (
+        <div className="empty-state">
+          <div className="empty-icon">📅</div>
+          <p>No scheduled reports configured.</p>
+        </div>
+      ) : (
+        <div className="card" style={{ padding: 0 }}>
+          <table>
+            <thead>
+              <tr>
+                <th>Name</th>
+                <th>Type</th>
+                <th>Schedule</th>
+                <th>Status</th>
+                <th>Last Run</th>
+                <th>Next Run</th>
+                <th style={{ width: 160 }}>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map(r => (
+                <tr key={r.id}>
+                  <td style={{ fontWeight: 600 }}>{r.name}</td>
+                  <td className="mono">{r.report_type}</td>
+                  <td><span className="badge badge-info">{r.schedule}</span></td>
+                  <td>
+                    <span className={`badge ${r.is_active ? 'badge-low' : 'badge-false_positive'}`}>
+                      {r.is_active ? 'Active' : 'Paused'}
+                    </span>
+                  </td>
+                  <td className="text-dim">{r.last_run ? new Date(r.last_run).toLocaleString() : '—'}</td>
+                  <td className="text-dim">{r.next_run ? new Date(r.next_run).toLocaleString() : '—'}</td>
+                  <td>
+                    <div style={{ display: 'flex', gap: 6 }}>
+                      <button
+                        className="btn btn-secondary btn-sm"
+                        onClick={() => toggle(r.id, r.is_active)}
+                      >
+                        {r.is_active ? 'Pause' : 'Resume'}
+                      </button>
+                      <button
+                        className="btn btn-danger btn-sm"
+                        onClick={() => del(r.id)}
+                      >
+                        Delete
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
+
 /* ─── Main Reports Page ──────────────────────────── */
 export function Reports() {
+  const { user } = useContext(AuthContext);
   const [data,    setData]    = useState(null);
   const [ale,     setAle]     = useState(null);
   const [tab,     setTab]     = useState('executive');
@@ -251,6 +356,7 @@ export function Reports() {
     { key: 'ale',           label: 'ALE Breakdown' },
     { key: 'trends',        label: 'Trends' },
     { key: 'report-builder',label: 'Report Builder' },
+    ...(user?.role === 'admin' ? [{ key: 'scheduled', label: 'Scheduled Reports' }] : []),
   ];
 
   return (
@@ -377,6 +483,8 @@ export function Reports() {
       {tab === 'trends' && <TrendsTab />}
 
       {tab === 'report-builder' && <ReportBuilderTab />}
+
+      {tab === 'scheduled' && <ScheduledTab />}
     </div>
   );
 }

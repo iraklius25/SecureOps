@@ -999,6 +999,7 @@ function NCDetail({ task, canEdit, onUpdated }) {
 function TasksTab({ user }) {
   const [tasks,        setTasks]        = useState([]);
   const [programs,     setPrograms]     = useState([]);
+  const [users,        setUsers]        = useState([]);
   const [filter,       setFilter]       = useState({ status:'', priority:'', framework:'', search:'' });
   const [showForm,     setShowForm]     = useState(false);
   const [form,         setForm]         = useState({ program_id:'', title:'', description:'', owner:'', due_date:'', priority:'medium', status:'open', framework:'', clause_ref:'' });
@@ -1011,6 +1012,7 @@ function TasksTab({ user }) {
       const [t, p] = await Promise.all([api.get('/grc/tasks'), api.get('/grc/programs')]);
       setTasks(t.data); setPrograms(p.data);
     } catch {}
+    try { const u = await api.get('/users'); setUsers(u.data || []); } catch {}
   };
   useEffect(() => { load(); }, []);
 
@@ -1084,8 +1086,19 @@ function TasksTab({ user }) {
                 </select>
               </div>
               <div className="form-group">
-                <label>Owner</label>
-                <input style={inp} value={form.owner} onChange={setF('owner')} placeholder="Name" />
+                <label>Assign To</label>
+                {users.length > 0 ? (
+                  <select style={sel} value={form.owner} onChange={setF('owner')}>
+                    <option value="">— Unassigned —</option>
+                    {users.map(u => (
+                      <option key={u.id} value={u.full_name || u.username}>
+                        {u.full_name ? `${u.full_name} (${u.username})` : u.username}
+                      </option>
+                    ))}
+                  </select>
+                ) : (
+                  <input style={inp} value={form.owner} onChange={setF('owner')} placeholder="Name / username" />
+                )}
               </div>
               <div className="form-group">
                 <label>Due Date</label>
@@ -1166,7 +1179,16 @@ function TasksTab({ user }) {
                         <span style={{ fontSize:11, color:'var(--text3)', marginLeft:'auto', flexShrink:0 }}>{expandedTask===t.id?'▲':'▼'}</span>
                       </div>
                     </td>
-                    <td style={td}>{t.owner||'—'}</td>
+                    <td style={td}>
+                      {t.owner ? (
+                        <span style={{ display:'inline-flex', alignItems:'center', gap:6 }}>
+                          <span style={{ width:22, height:22, borderRadius:'50%', background:'var(--accent)', display:'inline-flex', alignItems:'center', justifyContent:'center', fontSize:10, fontWeight:700, color:'#fff', flexShrink:0 }}>
+                            {t.owner.charAt(0).toUpperCase()}
+                          </span>
+                          <span style={{ fontSize:13 }}>{t.owner}</span>
+                        </span>
+                      ) : <span style={{ color:'var(--text3)', fontSize:12 }}>Unassigned</span>}
+                    </td>
                     <td style={td}>
                       {t.framework
                         ? <span style={badge((FRAMEWORKS.find(f=>f.id===t.framework)||{color:'#6b7280'}).color)}>{t.framework}</span>
@@ -2641,27 +2663,32 @@ export default function GRCHub() {
   const totalDocs = summary?.documents?.reduce((s, r) => s + parseInt(r.count || 0, 10), 0) || 0;
   const openTasks = sumCount(summary?.tasks, 'status', 'open') + sumCount(summary?.tasks, 'status', 'in_progress');
 
+  const statCards = summary ? [
+    { label:'Active Programs', val: sumCount(summary.programs,'status','active'),   color:'var(--low)',    icon:'🏗' },
+    { label:'Open Actions',    val: openTasks,                                      color:'var(--accent)', icon:'✅' },
+    { label:'Documents',       val: totalDocs,                                      color:'var(--info)',   icon:'📁' },
+    { label:'Controls',        val: summary.controls?.reduce((s,r)=>s+parseInt(r.count||0,10),0)||0, color:'var(--medium)', icon:'🛡' },
+  ] : [];
+
   return (
-    <div style={{ padding:24, maxWidth:1400, margin:'0 auto' }}>
+    <div>
       {/* Page header */}
-      <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:24, flexWrap:'wrap', gap:16 }}>
+      <div className="page-header">
         <div>
-          <h1 style={{ fontSize:24, fontWeight:800, margin:0, color:'var(--text1)' }}>GRC Hub</h1>
-          <div style={{ fontSize:13, color:'var(--text3)', marginTop:4 }}>
-            Governance · Risk · Compliance — ISO 27001 · NIST CSF 2.0 · ISO 42001
-          </div>
+          <div className="page-title">GRC Hub</div>
+          <div className="page-subtitle">Governance · Risk · Compliance — ISO 27001, NIST CSF 2.0, ISO 42001</div>
         </div>
         {summary && (
-          <div style={{ display:'flex', gap:10 }}>
-            {[
-              { label:'Active Programs', val: sumCount(summary.programs,'status','active'),   color:'#10b981' },
-              { label:'Open Tasks',      val: openTasks,                                      color:'#3b82f6' },
-              { label:'Documents',       val: totalDocs,                                      color:'#8b5cf6' },
-              { label:'Controls',        val: summary.controls?.reduce((s,r)=>s+parseInt(r.count||0,10),0)||0, color:'#f59e0b' },
-            ].map(s => (
-              <div key={s.label} style={{ textAlign:'center', background:'var(--surface2)', border:'1px solid var(--border1)', borderRadius:10, padding:'10px 16px', minWidth:80 }}>
-                <div style={{ fontSize:22, fontWeight:800, color:s.color }}>{s.val}</div>
-                <div style={{ fontSize:10, color:'var(--text3)', whiteSpace:'nowrap', marginTop:2 }}>{s.label}</div>
+          <div style={{ display:'flex', gap:10, flexWrap:'wrap' }}>
+            {statCards.map(s => (
+              <div key={s.label} style={{
+                textAlign:'center', background:'var(--bg2)', border:'1px solid var(--border)',
+                borderRadius:'var(--radius-lg)', padding:'10px 18px', minWidth:90,
+                boxShadow:'var(--shadow-sm)', position:'relative', overflow:'hidden',
+              }}>
+                <div style={{ position:'absolute', top:0, left:0, width:3, height:'100%', background:s.color, opacity:0.7 }} />
+                <div style={{ fontSize:20, fontWeight:800, color:s.color, fontFamily:"'JetBrains Mono', monospace" }}>{s.val}</div>
+                <div style={{ fontSize:10, color:'var(--text3)', whiteSpace:'nowrap', marginTop:2, textTransform:'uppercase', letterSpacing:'0.05em' }}>{s.label}</div>
               </div>
             ))}
           </div>
@@ -2669,28 +2696,27 @@ export default function GRCHub() {
       </div>
 
       {/* Tab bar */}
-      <div style={{ display:'flex', gap:2, borderBottom:'2px solid var(--border1)', marginBottom:24, overflowX:'auto' }}>
+      <div className="tabs" style={{ overflowX:'auto', flexWrap:'nowrap', gap:0 }}>
         {TABS.map(t => (
-          <button key={t.id} onClick={() => setTab(t.id)}
-            style={{ background:'none', border:'none', padding:'10px 16px', cursor:'pointer', fontSize:13, fontWeight:600,
-              color: tab===t.id ? 'var(--accent)' : 'var(--text3)',
-              borderBottom: tab===t.id ? '2px solid var(--accent)' : '2px solid transparent',
-              marginBottom:-2, transition:'color 0.15s', whiteSpace:'nowrap' }}>
-            {t.icon} {t.label}
+          <button key={t.id} className={`tab-btn ${tab===t.id?'active':''}`} onClick={() => setTab(t.id)}
+            style={{ whiteSpace:'nowrap' }}>
+            <span style={{ marginRight:5 }}>{t.icon}</span>{t.label}
           </button>
         ))}
       </div>
 
-      {tab === 'programs'  && <ProgramsTab  user={user} />}
-      {tab === 'documents' && <DocumentsTab user={user} />}
-      {tab === 'controls'  && <ControlsTab  user={user} />}
-      {tab === 'tasks'     && <TasksTab     user={user} />}
-      {tab === 'reviews'   && <ReviewsTab   user={user} />}
-      {tab === 'raci'      && <RACITab      user={user} />}
-      {tab === 'suppliers' && <SuppliersTab user={user} />}
-      {tab === 'ai_systems'&& <AISystemsTab user={user} />}
-      {tab === 'steering'  && <SteeringTab  user={user} />}
-      {tab === 'appetite'  && <AppetiteTab  user={user} />}
+      <div style={{ marginTop:2 }}>
+        {tab === 'programs'  && <ProgramsTab  user={user} />}
+        {tab === 'documents' && <DocumentsTab user={user} />}
+        {tab === 'controls'  && <ControlsTab  user={user} />}
+        {tab === 'tasks'     && <TasksTab     user={user} />}
+        {tab === 'reviews'   && <ReviewsTab   user={user} />}
+        {tab === 'raci'      && <RACITab      user={user} />}
+        {tab === 'suppliers' && <SuppliersTab user={user} />}
+        {tab === 'ai_systems'&& <AISystemsTab user={user} />}
+        {tab === 'steering'  && <SteeringTab  user={user} />}
+        {tab === 'appetite'  && <AppetiteTab  user={user} />}
+      </div>
     </div>
   );
 }

@@ -1,6 +1,6 @@
 const router = require('express').Router();
 const db     = require('../db');
-const { auth } = require('../middleware/auth');
+const { auth, requireRole } = require('../middleware/auth');
 
 // ── Helpers ────────────────────────────────────────────────────
 function escapeHtml(str) {
@@ -372,6 +372,46 @@ router.get('/html', async (req, res) => {
     res.setHeader('Content-Type', 'text/html');
     res.setHeader('Content-Disposition', 'attachment; filename="secureops-report.html"');
     res.send(html);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ── Scheduled Reports (admin) ──────────────────────────────────
+
+// GET /api/reports/scheduled
+router.get('/scheduled', auth, requireRole('admin'), async (req, res) => {
+  try {
+    const r = await db.query(`
+      SELECT id, name, report_type, schedule, is_active, last_run, next_run, created_at
+      FROM scheduled_reports
+      ORDER BY created_at DESC
+    `);
+    res.json(r.rows);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// DELETE /api/reports/scheduled/:id
+router.delete('/scheduled/:id', auth, requireRole('admin'), async (req, res) => {
+  const id = parseInt(req.params.id, 10);
+  if (!Number.isFinite(id)) return res.status(400).json({ error: 'Invalid id' });
+  try {
+    const r = await db.query(`DELETE FROM scheduled_reports WHERE id=$1 RETURNING id`, [id]);
+    if (r.rowCount === 0) return res.status(404).json({ error: 'Not found' });
+    res.json({ ok: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// PATCH /api/reports/scheduled/:id — toggle is_active
+router.patch('/scheduled/:id', auth, requireRole('admin'), async (req, res) => {
+  const id = parseInt(req.params.id, 10);
+  if (!Number.isFinite(id)) return res.status(400).json({ error: 'Invalid id' });
+  const { is_active } = req.body;
+  try {
+    const r = await db.query(
+      `UPDATE scheduled_reports SET is_active=$2 WHERE id=$1 RETURNING *`,
+      [id, is_active]
+    );
+    if (r.rowCount === 0) return res.status(404).json({ error: 'Not found' });
+    res.json(r.rows[0]);
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
