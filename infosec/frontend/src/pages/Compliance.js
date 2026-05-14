@@ -670,7 +670,7 @@ export default function Compliance() {
       <div className="page-header">
         <div>
           <div className="page-title">Compliance</div>
-          <div className="page-subtitle">NIST CSF 2.0 · ISO 27001:2022 · Gap Assessment</div>
+          <div className="page-subtitle">NIST CSF 2.0 · ISO 27001 · PCI DSS · SOC 2 · GDPR · ISO 22301 · Gap Assessment</div>
         </div>
       </div>
 

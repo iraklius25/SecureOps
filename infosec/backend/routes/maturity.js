@@ -74,7 +74,8 @@ router.get('/', auth, async (req, res) => {
 router.post('/', auth, requireRole('admin', 'analyst'), async (req, res) => {
   const { framework, name, description, data } = req.body;
   if (!framework || !name) return res.status(400).json({ error: 'framework and name are required' });
-  if (!['ISMS', 'ISO42001'].includes(framework)) return res.status(400).json({ error: 'Invalid framework' });
+  const VALID_FRAMEWORKS = ['ISMS', 'ISO42001', 'NISTCSF', 'PCIDSS', 'SOC2', 'ISO22301', 'GDPR'];
+  if (!VALID_FRAMEWORKS.includes(framework)) return res.status(400).json({ error: 'Invalid framework' });
   try {
     const r = await db.query(
       `INSERT INTO maturity_assessments (framework, name, description, data, created_by)

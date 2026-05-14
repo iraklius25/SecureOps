@@ -26,23 +26,6 @@ import CertificationTracker from './pages/CertificationTracker';
 import './App.css';
 
 export const AuthContext = createContext(null);
-export const CurrencyContext = createContext({ symbol: '$', code: 'USD', locale: 'en-US', setCurrency: () => {} });
-
-const CURRENCIES = [
-  { code: 'USD', symbol: '$',  locale: 'en-US', label: 'USD $'  },
-  { code: 'EUR', symbol: '€',  locale: 'de-DE', label: 'EUR €'  },
-  { code: 'GBP', symbol: '£',  locale: 'en-GB', label: 'GBP £'  },
-  { code: 'GEL', symbol: '₾',  locale: 'ka-GE', label: 'GEL ₾'  },
-  { code: 'JPY', symbol: '¥',  locale: 'ja-JP', label: 'JPY ¥'  },
-];
-
-function CurrencyProvider({ children }) {
-  const [currency, setCurrencyState] = useState(() => {
-    try { return JSON.parse(localStorage.getItem('currency')) || CURRENCIES[0]; } catch { return CURRENCIES[0]; }
-  });
-  const setCurrency = c => { setCurrencyState(c); localStorage.setItem('currency', JSON.stringify(c)); };
-  return <CurrencyContext.Provider value={{ ...currency, setCurrency }}>{children}</CurrencyContext.Provider>;
-}
 
 const THEMES = [
   { id: 'warm-dark', label: 'Warm Dark',  color: '#2e2720' },
@@ -479,7 +462,6 @@ function NotificationBell() {
 
 function Sidebar() {
   const { user, logout } = useContext(AuthContext);
-  const { code: currCode, setCurrency } = useContext(CurrencyContext);
   const loc = useLocation();
   const [changePwd, setChangePwd] = useState(false);
   const [show2fa, setShow2fa] = useState(false);
@@ -554,13 +536,6 @@ function Sidebar() {
             ))}
           </div>
         </div>
-        <div style={{ marginBottom: 8 }}>
-          <div style={{ fontSize: 10, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 5 }}>Currency</div>
-          <select value={currCode} onChange={e => setCurrency(CURRENCIES.find(c => c.code === e.target.value))}
-            style={{ width: '100%', padding: '4px 8px', background: 'var(--bg3)', color: 'var(--text)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', fontSize: 12, cursor: 'pointer' }}>
-            {CURRENCIES.map(c => <option key={c.code} value={c.code}>{c.label}</option>)}
-          </select>
-        </div>
         <button className="logout-btn" onClick={() => setShow2fa(true)} style={{ marginBottom: 6 }}>Setup 2FA</button>
         <button className="logout-btn" onClick={() => setChangePwd(true)} style={{ marginBottom: 6 }}>Change Password</button>
         <button className="logout-btn" onClick={logout}>Sign out</button>
@@ -590,7 +565,6 @@ function PrivateRoute({ children, roles }) {
 
 export default function App() {
   return (
-    <CurrencyProvider>
     <AuthProvider>
       <BrowserRouter>
         <Routes>
@@ -619,6 +593,5 @@ export default function App() {
         </Routes>
       </BrowserRouter>
     </AuthProvider>
-    </CurrencyProvider>
   );
 }

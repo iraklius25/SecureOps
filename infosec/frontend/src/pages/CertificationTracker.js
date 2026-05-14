@@ -120,13 +120,9 @@ export default function CertificationTracker() {
       </div>
 
       {/* Tab bar */}
-      <div style={{ display:'flex', gap:4, marginBottom:20, borderBottom:'1px solid var(--border1)', paddingBottom:0 }}>
+      <div className="tabs" style={{ marginBottom:20 }}>
         {TABS.map(t => (
-          <button key={t.id} onClick={() => setTab(t.id)}
-            style={{ background:'none', border:'none', cursor:'pointer', padding:'10px 18px',
-                     fontSize:13, fontWeight:600, color: tab===t.id ? 'var(--accent)' : 'var(--text3)',
-                     borderBottom: tab===t.id ? '2px solid var(--accent)' : '2px solid transparent',
-                     marginBottom:-1, transition:'color 0.15s' }}>
+          <button key={t.id} className={`tab-btn ${tab===t.id ? 'active' : ''}`} onClick={() => setTab(t.id)}>
             {t.icon} {t.label}
           </button>
         ))}
