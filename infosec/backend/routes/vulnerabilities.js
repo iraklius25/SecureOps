@@ -128,8 +128,9 @@ router.post('/', auth, requireRole('admin','analyst'), async (req, res) => {
 
 // DELETE /api/vulns/:id  (admin only)
 router.delete('/:id', auth, requireRole('admin'), async (req, res) => {
-  const id = parseInt(req.params.id, 10);
-  if (!Number.isFinite(id)) return res.status(400).json({ error: 'Invalid id' });
+  const { id } = req.params;
+  const uuidRe = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  if (!uuidRe.test(id)) return res.status(400).json({ error: 'Invalid id' });
   try {
     const r = await db.query('DELETE FROM vulnerabilities WHERE id=$1 RETURNING id', [id]);
     if (r.rowCount === 0) return res.status(404).json({ error: 'Vulnerability not found' });

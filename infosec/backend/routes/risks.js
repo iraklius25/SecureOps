@@ -46,4 +46,15 @@ router.patch('/:id', auth, requireRole('admin','analyst'), async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+router.delete('/:id', auth, requireRole('admin'), async (req, res) => {
+  const { id } = req.params;
+  const uuidRe = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  if (!uuidRe.test(id)) return res.status(400).json({ error: 'Invalid id' });
+  try {
+    const r = await db.query('DELETE FROM risks WHERE id=$1 RETURNING id', [id]);
+    if (r.rowCount === 0) return res.status(404).json({ error: 'Risk not found' });
+    res.json({ ok: true, id });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 module.exports = router;
