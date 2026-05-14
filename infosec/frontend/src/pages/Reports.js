@@ -16,10 +16,12 @@ function downloadCSV(path, filename) {
   }).catch(() => alert('Export failed'));
 }
 
-function openHtmlReport(sections) {
+function openHtmlReport(sections, from, to) {
   const token = localStorage.getItem('token') || '';
   const params = new URLSearchParams({ token });
   if (sections.length) params.set('sections', sections.join(','));
+  if (from) params.set('from', from);
+  if (to)   params.set('to',   to);
   window.open(`/api/reports/html?${params}`, '_blank');
 }
 
@@ -143,56 +145,147 @@ function TrendsTab() {
 
 /* ─── Report Builder Tab ─────────────────────────── */
 const REPORT_SECTIONS = [
-  { key:'executive',  label:'Executive Summary',  desc:'Asset counts, ALE totals, vulns by severity' },
-  { key:'ale',        label:'ALE Breakdown',       desc:'Top 10 vulnerabilities by annualised loss' },
-  { key:'risks',      label:'Top Risks',           desc:'Open risk register entries by risk score' },
-  { key:'vulnstats',  label:'Recent Findings',     desc:'Last 20 detected vulnerabilities' },
-  { key:'assets',     label:'Asset Summary',       desc:'Asset count by type' },
+  { group: 'Top Management', key:'management_summary', label:'Top Management Summary',  desc:'Board-level view: risk posture, appetite status, critical KPIs, top risks' },
+  { group: 'Executive',      key:'executive',          label:'Executive Summary',        desc:'Asset counts, ALE totals, open vulnerabilities by severity' },
+  { group: 'Executive',      key:'risk_appetite',      label:'Risk Appetite Status',     desc:'Current posture vs approved thresholds — score, ALE, critical count' },
+  { group: 'Executive',      key:'kpi_metrics',        label:'KPI & KRI Metrics',        desc:'Key risk indicators with RAG status: MTTR, ALE, critical counts' },
+  { group: 'Risk Register',  key:'risks',              label:'Top Open Risks',           desc:'Open risk register entries ranked by risk score' },
+  { group: 'Risk Register',  key:'ale',                label:'ALE Breakdown',            desc:'Top vulnerabilities by annualised loss expectancy (ALE)' },
+  { group: 'Security',       key:'vulnstats',          label:'Findings (Date Range)',    desc:'Vulnerabilities detected in the selected reporting period' },
+  { group: 'Security',       key:'assets',             label:'Asset Inventory',          desc:'Asset count by type and criticality level' },
+  { group: 'Compliance',     key:'compliance',         label:'Compliance Posture',       desc:'Control status and % compliance across all frameworks' },
+  { group: 'Compliance',     key:'certifications',     label:'Certification Status',     desc:'Active certifications, phases, and completion percentages' },
 ];
 
+const PRESETS = {
+  management: { label: 'Top Management Pack',  keys: ['management_summary','risk_appetite','kpi_metrics','risks'] },
+  full:        { label: 'Full Report',          keys: REPORT_SECTIONS.map(s => s.key) },
+  executive:   { label: 'Executive Brief',      keys: ['executive','risk_appetite','risks','ale'] },
+  compliance:  { label: 'Compliance Pack',      keys: ['compliance','certifications','risk_appetite'] },
+};
+
 function ReportBuilderTab() {
-  const [selected, setSelected] = useState(new Set(['executive','ale','risks','vulnstats','assets']));
-  const toggle = key => setSelected(prev => { const n = new Set(prev); n.has(key) ? n.delete(key) : n.add(key); return n; });
-  const sections = Array.from(selected);
+  const todayStr = () => new Date().toISOString().slice(0, 10);
+  const thirtyAgoStr = () => { const d = new Date(); d.setDate(d.getDate() - 30); return d.toISOString().slice(0, 10); };
+
+  const [selected, setSelected] = useState(new Set(PRESETS.management.keys));
+  const [dateFrom, setDateFrom] = useState(thirtyAgoStr);
+  const [dateTo,   setDateTo]   = useState(todayStr);
+
+  const toggle = key => setSelected(prev => {
+    const n = new Set(prev); n.has(key) ? n.delete(key) : n.add(key); return n;
+  });
+  const applyPreset = keys => setSelected(new Set(keys));
+  const sections = REPORT_SECTIONS.filter(s => selected.has(s.key)).map(s => s.key);
+
+  const exportHtml = () => {
+    const token  = localStorage.getItem('token') || '';
+    const params = new URLSearchParams({ token });
+    if (sections.length) params.set('sections', sections.join(','));
+    if (dateFrom) params.set('from', dateFrom);
+    if (dateTo)   params.set('to',   dateTo);
+    api.get(`/reports/html?${params}`, { responseType: 'blob' }).then(r => {
+      const url = URL.createObjectURL(new Blob([r.data], { type: 'text/html' }));
+      const a   = document.createElement('a');
+      a.href = url; a.download = `secureops-report-${dateFrom}-${dateTo}.html`;
+      document.body.appendChild(a); a.click();
+      document.body.removeChild(a); URL.revokeObjectURL(url);
+    }).catch(() => alert('Export failed'));
+  };
+
+  const groups = [...new Set(REPORT_SECTIONS.map(s => s.group))];
 
   return (
-    <div className="card">
-      <div className="card-title" style={{ marginBottom:16 }}>Select Report Sections</div>
-      <div style={{ display:'flex', flexDirection:'column', gap:10, marginBottom:20 }}>
-        {REPORT_SECTIONS.map(s => (
-          <label key={s.key} style={{
-            display:'flex', alignItems:'center', gap:12, padding:'10px 14px',
-            background: selected.has(s.key) ? 'rgba(124,111,255,0.08)' : 'var(--bg3)',
-            borderRadius:'var(--radius)',
-            border:`1px solid ${selected.has(s.key) ? 'rgba(124,111,255,0.3)' : 'var(--border)'}`,
-            cursor:'pointer', transition:'all 0.15s',
-          }}>
-            <input type="checkbox" checked={selected.has(s.key)} onChange={() => toggle(s.key)} style={{ width:16, height:16, flexShrink:0 }} />
-            <div>
-              <div style={{ fontWeight:600, fontSize:13 }}>{s.label}</div>
-              <div style={{ fontSize:12, color:'var(--text3)' }}>{s.desc}</div>
+    <div>
+      {/* Date range */}
+      <div className="card" style={{ marginBottom: 16 }}>
+        <div className="card-title" style={{ marginBottom: 14 }}>Reporting Period</div>
+        <div style={{ display: 'flex', gap: 16, alignItems: 'center', flexWrap: 'wrap' }}>
+          <div className="form-group" style={{ marginBottom: 0 }}>
+            <label style={{ fontSize: 12, marginBottom: 4, display: 'block' }}>From</label>
+            <input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)}
+              style={{ background: 'var(--bg3)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', color: 'var(--text)', padding: '6px 10px', fontSize: 13 }} />
+          </div>
+          <div style={{ fontSize: 18, color: 'var(--text3)', paddingTop: 20 }}>→</div>
+          <div className="form-group" style={{ marginBottom: 0 }}>
+            <label style={{ fontSize: 12, marginBottom: 4, display: 'block' }}>To</label>
+            <input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)}
+              style={{ background: 'var(--bg3)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', color: 'var(--text)', padding: '6px 10px', fontSize: 13 }} />
+          </div>
+          <div style={{ paddingTop: 20, display: 'flex', gap: 6 }}>
+            {[7, 30, 90].map(d => (
+              <button key={d} className="btn btn-secondary btn-sm" onClick={() => {
+                const from = new Date(); from.setDate(from.getDate() - d);
+                setDateFrom(from.toISOString().slice(0, 10)); setDateTo(todayStr());
+              }}>Last {d}d</button>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* Presets */}
+      <div className="card" style={{ marginBottom: 16 }}>
+        <div className="card-title" style={{ marginBottom: 10 }}>Quick Presets</div>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          {Object.entries(PRESETS).map(([key, p]) => (
+            <button key={key} className="btn btn-secondary btn-sm" onClick={() => applyPreset(p.keys)}>
+              {p.label}
+            </button>
+          ))}
+          <button className="btn btn-secondary btn-sm" style={{ color: 'var(--text3)' }}
+            onClick={() => setSelected(new Set())}>Clear All</button>
+        </div>
+      </div>
+
+      {/* Section picker */}
+      <div className="card" style={{ marginBottom: 16 }}>
+        <div className="card-title" style={{ marginBottom: 14 }}>Select Report Sections</div>
+        {groups.map(group => (
+          <div key={group} style={{ marginBottom: 18 }}>
+            <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.07em', color: 'var(--text3)', marginBottom: 8 }}>{group}</div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+              {REPORT_SECTIONS.filter(s => s.group === group).map(s => (
+                <label key={s.key} style={{
+                  display: 'flex', alignItems: 'center', gap: 12, padding: '9px 14px',
+                  background: selected.has(s.key) ? 'rgba(124,111,255,0.08)' : 'var(--bg3)',
+                  borderRadius: 'var(--radius)',
+                  border: `1px solid ${selected.has(s.key) ? 'rgba(124,111,255,0.3)' : 'var(--border)'}`,
+                  cursor: 'pointer', transition: 'all 0.15s',
+                }}>
+                  <input type="checkbox" checked={selected.has(s.key)} onChange={() => toggle(s.key)}
+                    style={{ width: 15, height: 15, flexShrink: 0 }} />
+                  <div>
+                    <div style={{ fontWeight: 600, fontSize: 13 }}>{s.label}</div>
+                    <div style={{ fontSize: 11, color: 'var(--text3)' }}>{s.desc}</div>
+                  </div>
+                </label>
+              ))}
             </div>
-          </label>
+          </div>
         ))}
+        {selected.size === 0 && (
+          <div style={{ fontSize: 13, color: 'var(--text3)', padding: '8px 0' }}>Select at least one section above.</div>
+        )}
       </div>
-      {selected.size === 0 && <div style={{ fontSize:13, color:'var(--text3)', marginBottom:16 }}>Select at least one section.</div>}
-      <div style={{ display:'flex', gap:10, flexWrap:'wrap' }}>
-        <button className="btn btn-primary" disabled={selected.size === 0} onClick={() => openHtmlReport(sections)}>Generate Report</button>
-        <button className="btn btn-secondary" disabled={selected.size === 0} onClick={() => {
-          const token = localStorage.getItem('token') || '';
-          const params = new URLSearchParams({ token });
-          if (sections.length) params.set('sections', sections.join(','));
-          api.get(`/reports/html?${params}`, { responseType:'blob' }).then(r => {
-            const url = URL.createObjectURL(new Blob([r.data], { type:'text/html' }));
-            const a = document.createElement('a');
-            a.href = url; a.download = `secureops-report-${Date.now()}.html`;
-            document.body.appendChild(a); a.click();
-            document.body.removeChild(a); URL.revokeObjectURL(url);
-          }).catch(() => alert('Export failed'));
-        }}>Export HTML</button>
-      </div>
-      <div style={{ marginTop:20, padding:'12px 14px', background:'var(--bg3)', borderRadius:'var(--radius)', fontSize:12, color:'var(--text3)' }}>
-        <strong>Tip:</strong> Use your browser's Print (Ctrl+P) → "Save as PDF" to create a PDF.
+
+      {/* Actions */}
+      <div className="card">
+        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
+          <button className="btn btn-primary" disabled={selected.size === 0}
+            onClick={() => openHtmlReport(sections, dateFrom, dateTo)}>
+            Open Report in Browser
+          </button>
+          <button className="btn btn-secondary" disabled={selected.size === 0} onClick={exportHtml}>
+            Download as HTML
+          </button>
+          <span style={{ fontSize: 12, color: 'var(--text3)', marginLeft: 4 }}>
+            {selected.size} section{selected.size !== 1 ? 's' : ''} selected
+          </span>
+        </div>
+        <div style={{ marginTop: 12, padding: '10px 12px', background: 'var(--bg3)', borderRadius: 'var(--radius)', fontSize: 12, color: 'var(--text3)' }}>
+          Company logo (if set in Settings → Branding) appears automatically in the report header.
+          Use <strong>Ctrl+P → Save as PDF</strong> to create a PDF version.
+        </div>
       </div>
     </div>
   );
