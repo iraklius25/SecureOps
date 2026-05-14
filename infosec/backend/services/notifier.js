@@ -102,4 +102,104 @@ async function notifyScanComplete(scanJob, stats) {
   }
 }
 
-module.exports = { notifyInApp, notifyWebhook, notifyVuln, notifyScanComplete };
+// ── New-risk notification ─────────────────────────────────────
+async function notifyNewRisk(risk) {
+  try {
+    const r = await db.query(`SELECT value FROM settings WHERE key='notify_on_new_risk'`);
+    if (r.rows[0]?.value !== 'true') return;
+    const title   = `New Risk Registered: ${risk.title}`;
+    const message = [
+      `Level: ${(risk.risk_level || 'unknown').toUpperCase()} | Score: ${risk.risk_score || 0}`,
+      `Category: ${risk.category || 'Uncategorised'}`,
+      `Treatment: ${risk.treatment || 'mitigate'}`,
+    ].join(' · ');
+    const type = risk.risk_level === 'critical' ? 'critical' : risk.risk_level === 'high' ? 'warning' : 'info';
+    await Promise.all([
+      notifyInApp({ title, message, type, resource: 'risk', resource_id: risk.id, link: '/risks' }),
+      notifyWebhook({ title, message, type }),
+    ]);
+  } catch (e) { logger.error('notifyNewRisk error:', e.message); }
+}
+
+// ── Approval notification ─────────────────────────────────────
+async function notifyApproval(approval, vulnTitle, severity, requestedByName, verdict) {
+  try {
+    const r = await db.query(`SELECT value FROM settings WHERE key='notify_on_approval'`);
+    if (r.rows[0]?.value !== 'true') return;
+    const isNew  = !verdict;
+    const title  = isNew
+      ? `Approval Request: ${vulnTitle} — ${approval.action}`
+      : `Approval ${verdict.charAt(0).toUpperCase() + verdict.slice(1)}: ${vulnTitle}`;
+    const message = [
+      `Vulnerability: ${vulnTitle} (${severity})`,
+      `Action: ${approval.action}`,
+      `Requested by: ${requestedByName || 'Unknown'}`,
+      !isNew ? `Decision: ${verdict}` : 'Status: Pending review',
+      approval.request_notes ? `Notes: ${approval.request_notes}` : null,
+    ].filter(Boolean).join(' · ');
+    const type = isNew ? 'warning' : (verdict === 'approved' ? 'success' : 'info');
+    await Promise.all([
+      notifyInApp({ title, message, type, resource: 'approval', resource_id: approval.id, link: '/approvals' }),
+      notifyWebhook({ title, message, type }),
+    ]);
+  } catch (e) { logger.error('notifyApproval error:', e.message); }
+}
+
+// ── GRC Hub activity notification ─────────────────────────────
+async function notifyGrcActivity(entityType, entityName, action, detail) {
+  try {
+    const r = await db.query(`SELECT value FROM settings WHERE key='notify_on_grc_activity'`);
+    if (r.rows[0]?.value !== 'true') return;
+    const title   = `GRC Hub: ${entityType} ${action} — ${entityName}`;
+    const message = detail || `${entityType} "${entityName}" was ${action} in the GRC Hub.`;
+    await Promise.all([
+      notifyInApp({ title, message, type: 'info', resource: 'grc', link: '/grc' }),
+      notifyWebhook({ title, message, type: 'info' }),
+    ]);
+  } catch (e) { logger.error('notifyGrcActivity error:', e.message); }
+}
+
+// ── Certification Tracker change notification ──────────────────
+async function notifyCertChange(cert, changeType, extraDetail) {
+  try {
+    const r = await db.query(`SELECT value FROM settings WHERE key='notify_on_cert_change'`);
+    if (r.rows[0]?.value !== 'true') return;
+    const title   = `Certification Update: ${cert.name} (${cert.framework})`;
+    const message = [
+      `Change: ${changeType}`,
+      cert.org_name ? `Organisation: ${cert.org_name}` : null,
+      cert.phase    ? `Phase: ${cert.phase}`            : null,
+      extraDetail   || null,
+    ].filter(Boolean).join(' · ');
+    await Promise.all([
+      notifyInApp({ title, message, type: 'info', resource: 'certification', resource_id: cert.id, link: '/certifications' }),
+      notifyWebhook({ title, message, type: 'info' }),
+    ]);
+  } catch (e) { logger.error('notifyCertChange error:', e.message); }
+}
+
+// ── KPI / KRI metric change notification ─────────────────────
+async function notifyKpiChange(metricName, oldRag, newRag, detail) {
+  try {
+    const r = await db.query(`SELECT value FROM settings WHERE key='notify_on_kpi_change'`);
+    if (r.rows[0]?.value !== 'true') return;
+    if (!oldRag || !newRag || oldRag === newRag) return;
+    const ragOrder = ['green', 'amber', 'red'];
+    const worsened = ragOrder.indexOf(newRag) > ragOrder.indexOf(oldRag);
+    const title   = `KPI/KRI Alert: ${metricName}`;
+    const message = [
+      `Metric: ${metricName}`,
+      `Status changed: ${oldRag.toUpperCase()} → ${newRag.toUpperCase()}`,
+      worsened ? 'Status degraded — review required.' : 'Status improved.',
+      detail || null,
+    ].filter(Boolean).join(' · ');
+    const type = worsened ? (newRag === 'red' ? 'critical' : 'warning') : 'success';
+    await Promise.all([
+      notifyInApp({ title, message, type, resource: 'metric', link: '/metrics' }),
+      notifyWebhook({ title, message, type }),
+    ]);
+  } catch (e) { logger.error('notifyKpiChange error:', e.message); }
+}
+
+module.exports = { notifyInApp, notifyWebhook, notifyVuln, notifyScanComplete,
+                   notifyNewRisk, notifyApproval, notifyGrcActivity, notifyCertChange, notifyKpiChange };

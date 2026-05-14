@@ -1,9 +1,10 @@
-const router = require('express').Router();
-const path   = require('path');
-const fs     = require('fs');
-const multer = require('multer');
-const db     = require('../db');
+const router   = require('express').Router();
+const path     = require('path');
+const fs       = require('fs');
+const multer   = require('multer');
+const db       = require('../db');
 const { auth, requireRole } = require('../middleware/auth');
+const notifier = require('../services/notifier');
 
 const UPLOAD_DIR = path.join(__dirname, '..', 'uploads', 'grc');
 if (!fs.existsSync(UPLOAD_DIR)) fs.mkdirSync(UPLOAD_DIR, { recursive: true });
@@ -71,6 +72,9 @@ router.post('/programs', auth, requireRole('admin', 'analyst'), async (req, res)
       [framework, name.trim(), description || '', phase || 'planning', owner || '',
        target_date || null, completion_pct || 0, status || 'active', req.user.id]
     );
+    notifier.notifyGrcActivity('GRC Program', r.rows[0].name, 'created',
+      `Framework: ${r.rows[0].framework} | Phase: ${r.rows[0].phase} | Owner: ${r.rows[0].owner || 'N/A'}`
+    ).catch(() => {});
     res.status(201).json(r.rows[0]);
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -132,6 +136,9 @@ router.post('/tasks', auth, requireRole('admin', 'analyst'), async (req, res) =>
        corrective_action || null, verification_evidence || null, verification_date || null,
        recurrence_check_date || null, req.user.id]
     );
+    notifier.notifyGrcActivity('GRC Task', r.rows[0].title, 'created',
+      `Priority: ${r.rows[0].priority} | Owner: ${r.rows[0].owner || 'N/A'} | Due: ${r.rows[0].due_date ? new Date(r.rows[0].due_date).toLocaleDateString() : 'N/A'}`
+    ).catch(() => {});
     res.status(201).json(r.rows[0]);
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -176,6 +183,9 @@ router.post('/documents/:id/approve', auth, requireRole('admin', 'analyst'), asy
       [req.user.id, req.params.id]
     );
     if (!r.rows.length) return res.status(404).json({ error: 'Not found' });
+    notifier.notifyGrcActivity('GRC Document', r.rows[0].title, 'approved',
+      `Document "${r.rows[0].title}" was approved | Category: ${r.rows[0].category} | Version: ${r.rows[0].doc_version}`
+    ).catch(() => {});
     res.json(r.rows[0]);
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -248,6 +258,9 @@ router.post('/documents', auth, requireRole('admin', 'analyst'), upload.single('
        req.file?.originalname || null, req.file?.filename || null,
        req.file?.mimetype || null, req.file?.size || null, req.user.id]
     );
+    notifier.notifyGrcActivity('GRC Document', r.rows[0].title, 'uploaded',
+      `Category: ${r.rows[0].category} | Version: ${r.rows[0].doc_version} | Status: ${r.rows[0].status} | Owner: ${r.rows[0].owner || 'N/A'}`
+    ).catch(() => {});
     res.status(201).json(r.rows[0]);
   } catch (e) {
     if (req.file) fs.unlink(path.join(UPLOAD_DIR, req.file.filename), () => {});

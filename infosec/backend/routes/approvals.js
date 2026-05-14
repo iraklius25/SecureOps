@@ -1,6 +1,7 @@
-const router = require('express').Router();
-const db = require('../db');
+const router   = require('express').Router();
+const db       = require('../db');
 const { auth, requireRole } = require('../middleware/auth');
+const notifier = require('../services/notifier');
 
 const VALID_ACTIONS = ['accept_risk', 'close', 'mitigate'];
 
@@ -56,6 +57,12 @@ router.post('/', auth, async (req, res) => {
       INSERT INTO vuln_approvals (vuln_id, action, requested_by, request_notes, status)
       VALUES ($1, $2, $3, $4, 'pending') RETURNING *
     `, [vuln_id, action, req.user.id, request_notes || null]);
+    ;(async () => {
+      try {
+        const vr = await db.query('SELECT title, severity FROM vulnerabilities WHERE id=$1', [vuln_id]);
+        await notifier.notifyApproval(r.rows[0], vr.rows[0]?.title || 'Unknown', vr.rows[0]?.severity || 'unknown', req.user.username, null);
+      } catch {}
+    })();
     res.status(201).json(r.rows[0]);
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -100,6 +107,12 @@ router.patch('/:id', auth, requireRole('admin', 'analyst'), async (req, res) => 
       }
     }
 
+    ;(async () => {
+      try {
+        const vr = await db.query('SELECT title, severity FROM vulnerabilities WHERE id=$1', [a.vuln_id]);
+        await notifier.notifyApproval(r.rows[0], vr.rows[0]?.title || 'Unknown', vr.rows[0]?.severity || 'unknown', req.user.username, status);
+      } catch {}
+    })();
     res.json(r.rows[0]);
   } catch (e) { res.status(500).json({ error: e.message }); }
 });

@@ -827,10 +827,23 @@ export default function Settings() {
           <div style={{ borderTop: '1px solid var(--border)', paddingTop: 20, marginTop: 8 }}>
             <div className="card-title" style={{ marginBottom: 14 }}>Notification Triggers</div>
             {[
-              { key: 'notify_on_critical',     label: 'Notify on Critical Vulnerabilities' },
-              { key: 'notify_on_high',          label: 'Notify on High Vulnerabilities' },
-              { key: 'notify_on_scan_complete', label: 'Notify on Scan Completion' },
-            ].map(({ key, label }) => (
+              { key: 'notify_on_critical',     label: 'Notify on Critical Vulnerabilities',
+                desc: 'Alert when a critical-severity vulnerability is discovered on any asset' },
+              { key: 'notify_on_high',          label: 'Notify on High Vulnerabilities',
+                desc: 'Alert when a high-severity vulnerability is discovered on any asset' },
+              { key: 'notify_on_scan_complete', label: 'Notify on Scan Completion',
+                desc: 'Alert when a network scan finishes — includes assets found and vuln count' },
+              { key: 'notify_on_new_risk',      label: 'Notify on New Risk Register Entry',
+                desc: 'Details: risk title, level, score (1–25), category, treatment strategy, owner' },
+              { key: 'notify_on_approval',      label: 'Notify on Approvals',
+                desc: 'Details: vulnerability title, severity, action requested, requester name, decision (approved/rejected)' },
+              { key: 'notify_on_grc_activity',  label: 'Notify on GRC Hub Activity',
+                desc: 'Details: entity type (program/task/document), name, action, framework, owner' },
+              { key: 'notify_on_cert_change',   label: 'Notify on Certification Tracker Changes',
+                desc: 'Details: certification name, framework, phase transition, organisation, completion %' },
+              { key: 'notify_on_kpi_change',    label: 'Notify on KPI & KRI Metrics Changes',
+                desc: 'Details: metric name, old/new RAG status (Green/Amber/Red), direction of change' },
+            ].map(({ key, label, desc }) => (
               <div key={key} style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 14 }}>
                 <label style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', flex: 1 }}>
                   <input type="checkbox" checked={form[key] === 'true'}
@@ -838,7 +851,7 @@ export default function Settings() {
                   <div>
                     <div style={{ fontWeight: 500 }}>{label}</div>
                     <div style={{ fontSize: 11, color: 'var(--text3)' }}>
-                      {settings.find(s => s.key === key)?.description}
+                      {settings.find(s => s.key === key)?.description || desc}
                     </div>
                   </div>
                 </label>

@@ -1,6 +1,7 @@
-const router = require('express').Router();
-const db     = require('../db');
+const router   = require('express').Router();
+const db       = require('../db');
 const { auth, requireRole } = require('../middleware/auth');
+const notifier = require('../services/notifier');
 
 /* ── Organizations ─────────────────────────────────────────────── */
 
@@ -188,6 +189,9 @@ router.put('/:id', auth, requireRole('admin','analyst'), async (req, res) => {
   const { org_id, framework, name, scope, phase, target_date, certified_date,
           expiry_date, auditor, owner, status, completion_pct, notes } = req.body;
   try {
+    const oldRow = await db.query('SELECT phase, status FROM certifications WHERE id=$1', [req.params.id]);
+    const oldPhase  = oldRow.rows[0]?.phase;
+    const oldStatus = oldRow.rows[0]?.status;
     const r = await db.query(
       `UPDATE certifications SET
          org_id=$1, framework=$2, name=$3, scope=$4, phase=$5, target_date=$6,
@@ -198,7 +202,15 @@ router.put('/:id', auth, requireRole('admin','analyst'), async (req, res) => {
        certified_date||null, expiry_date||null, auditor||null, owner||null,
        status||'active', completion_pct||0, notes||null, req.params.id]
     );
-    res.json(r.rows[0]);
+    const cert = r.rows[0];
+    if (cert) {
+      if (oldPhase && oldPhase !== cert.phase) {
+        notifier.notifyCertChange(cert, `Phase: ${oldPhase} → ${cert.phase}`, `Completion: ${cert.completion_pct}%`).catch(() => {});
+      } else if (oldStatus && oldStatus !== cert.status) {
+        notifier.notifyCertChange(cert, `Status: ${oldStatus} → ${cert.status}`).catch(() => {});
+      }
+    }
+    res.json(cert);
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 

@@ -7,7 +7,7 @@ router.get('/', auth, async (req, res) => {
   try {
     const [
       assets, vulns, risks, recentScans, aleTotal, critAssets, trendVulns,
-      riskTrend, slaStats, topRiskAssets,
+      riskTrend, slaStats, topRiskAssets, riskTreatment, riskByCategory, topOpenRisks, overdueRisks, appetite,
     ] = await Promise.all([
       db.query(`SELECT status, COUNT(*) FROM assets GROUP BY status`),
       db.query(`SELECT severity, status, COUNT(*) FROM vulnerabilities GROUP BY severity, status`),
@@ -49,6 +49,16 @@ router.get('/', auth, async (req, res) => {
         ORDER BY critical_count DESC, high_count DESC, total_ale DESC
         LIMIT 8
       `),
+      // Risk treatment breakdown
+      db.query(`SELECT COALESCE(treatment,'mitigate') AS treatment, COUNT(*) AS cnt FROM risks WHERE status='open' GROUP BY 1`),
+      // Risk by category
+      db.query(`SELECT COALESCE(category,'Uncategorised') AS category, COUNT(*) AS cnt, ROUND(AVG(risk_score)) AS avg_score FROM risks WHERE status='open' GROUP BY 1 ORDER BY cnt DESC LIMIT 8`),
+      // Top open risks by score
+      db.query(`SELECT r.id, r.title, r.risk_level, r.risk_score, r.treatment, r.category, a.ip_address, a.hostname FROM risks r LEFT JOIN assets a ON a.id=r.asset_id WHERE r.status='open' ORDER BY r.risk_score DESC LIMIT 10`),
+      // Risks past review date
+      db.query(`SELECT COUNT(*) AS overdue FROM risks WHERE status='open' AND review_date IS NOT NULL AND review_date < NOW()`),
+      // Risk appetite thresholds
+      db.query(`SELECT max_risk_score, max_ale, max_open_critical, notes FROM risk_appetite LIMIT 1`),
     ]);
 
     const assetMap = Object.fromEntries(assets.rows.map(r => [r.status, parseInt(r.count)]));
@@ -74,8 +84,13 @@ router.get('/', auth, async (req, res) => {
       recent_scans:   recentScans.rows,
       vuln_trend:     trendVulns.rows,
       risk_trend:     riskTrend.rows,
-      sla:            slaStats.rows[0],
+      sla:             slaStats.rows[0],
       top_risk_assets: topRiskAssets.rows,
+      risk_treatment:  Object.fromEntries((riskTreatment.rows||[]).map(r => [r.treatment, parseInt(r.cnt)])),
+      risk_by_category: riskByCategory.rows,
+      top_open_risks:  topOpenRisks.rows,
+      overdue_risks:   parseInt(overdueRisks.rows[0]?.overdue || 0),
+      risk_appetite:   appetite.rows[0] || null,
     });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });

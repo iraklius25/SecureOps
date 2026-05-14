@@ -1,7 +1,8 @@
 // risks.js
-const router = require('express').Router();
-const db = require('../db');
+const router   = require('express').Router();
+const db       = require('../db');
 const { auth, requireRole } = require('../middleware/auth');
+const notifier = require('../services/notifier');
 
 router.get('/', auth, async (req, res) => {
   try {
@@ -25,6 +26,7 @@ router.post('/', auth, requireRole('admin','analyst'), async (req, res) => {
       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *
     `, [title,description,category,asset_id,likelihood,impact,treatment||'mitigate',owner||null,
         eu_ai_act_tier||null,ai_system_id||null]);
+    notifier.notifyNewRisk(r.rows[0]).catch(() => {});
     res.status(201).json(r.rows[0]);
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -32,6 +34,8 @@ router.post('/', auth, requireRole('admin','analyst'), async (req, res) => {
 router.patch('/:id', auth, requireRole('admin','analyst'), async (req, res) => {
   const { status, treatment, likelihood, impact, review_date, eu_ai_act_tier, ai_system_id } = req.body;
   try {
+    const oldRow = await db.query('SELECT risk_level, title FROM risks WHERE id=$1', [req.params.id]);
+    const oldLevel = oldRow.rows[0]?.risk_level;
     const r = await db.query(`
       UPDATE risks SET status=COALESCE($2,status), treatment=COALESCE($3,treatment),
         likelihood=COALESCE($4,likelihood), impact=COALESCE($5,impact),
@@ -42,6 +46,16 @@ router.patch('/:id', auth, requireRole('admin','analyst'), async (req, res) => {
       WHERE id=$1 RETURNING *
     `, [req.params.id, status, treatment, likelihood, impact, review_date,
         eu_ai_act_tier||null, ai_system_id||null]);
+    const newLevel = r.rows[0]?.risk_level;
+    if (oldLevel && newLevel && oldLevel !== newLevel) {
+      const ragMap = { critical: 'red', high: 'amber', medium: 'amber', low: 'green' };
+      notifier.notifyKpiChange(
+        `Risk Level: ${r.rows[0].title}`,
+        ragMap[oldLevel] || 'amber',
+        ragMap[newLevel] || 'amber',
+        `Level changed from ${oldLevel} to ${newLevel}`
+      ).catch(() => {});
+    }
     res.json(r.rows[0]);
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
