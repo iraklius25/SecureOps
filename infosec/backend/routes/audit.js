@@ -4,13 +4,15 @@ const { auth, requireRole } = require('../middleware/auth');
 
 // GET /api/audit — paginated audit log (admin/auditor only)
 router.get('/', auth, requireRole('admin','auditor'), async (req, res) => {
-  const { page = 1, limit = 50, user_id, resource, action } = req.query;
+  const { page = 1, limit = 50, user_id, resource, action, date_from, date_to } = req.query;
   const offset = (page - 1) * limit;
   let where = ['1=1'], params = [];
 
-  if (user_id)  { params.push(user_id);  where.push(`a.user_id=$${params.length}`); }
-  if (resource) { params.push(resource); where.push(`a.resource=$${params.length}`); }
-  if (action)   { params.push(`%${action}%`); where.push(`a.action ILIKE $${params.length}`); }
+  if (user_id)   { params.push(user_id);              where.push(`a.user_id=$${params.length}`); }
+  if (resource)  { params.push(resource);             where.push(`a.resource=$${params.length}`); }
+  if (action)    { params.push(`%${action}%`);        where.push(`a.action ILIKE $${params.length}`); }
+  if (date_from) { params.push(date_from);            where.push(`a.created_at >= $${params.length}::date`); }
+  if (date_to)   { params.push(date_to);              where.push(`a.created_at <  ($${params.length}::date + INTERVAL '1 day')`); }
 
   try {
     const count = await db.query(

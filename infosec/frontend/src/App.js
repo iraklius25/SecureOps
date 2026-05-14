@@ -22,6 +22,7 @@ import ForceChangePassword   from './pages/ForceChangePassword';
 import MaturityAssessment    from './pages/MaturityAssessment';
 import GRCHub               from './pages/GRCHub';
 import Metrics              from './pages/Metrics';
+import CertificationTracker from './pages/CertificationTracker';
 import './App.css';
 
 export const AuthContext = createContext(null);
@@ -243,27 +244,51 @@ function AuthProvider({ children }) {
   return <AuthContext.Provider value={{ user, setUser, login, totpLogin, logout }}>{children}</AuthContext.Provider>;
 }
 
-const NAV = [
-  { path: '/',               label: 'Dashboard',       icon: '⬛', roles: ['admin','analyst','viewer','auditor'] },
-  { path: '/assets',         label: 'Asset Inventory', icon: '🖥',  roles: ['admin','analyst','viewer','auditor'] },
-  { path: '/scans',          label: 'Scans',           icon: '🔍', roles: ['admin','analyst'] },
-  { path: '/vulnerabilities', label: 'Vulnerabilities',icon: '⚠',  roles: ['admin','analyst','viewer','auditor'] },
-  { path: '/risks',          label: 'Risk Register',   icon: '📋', roles: ['admin','analyst','viewer','auditor'] },
-  { path: '/reports',        label: 'Reports',         icon: '📊', roles: ['admin','analyst','auditor'] },
-  { path: '/compliance',     label: 'Compliance',      icon: '✅', roles: ['admin','analyst','auditor'] },
-  { path: '/maturity',      label: 'Maturity',        icon: '📈', roles: ['admin','analyst','auditor'] },
-  { path: '/grc',           label: 'GRC Hub',         icon: '🏛', roles: ['admin','analyst','auditor'] },
-  { path: '/metrics',       label: 'KPI / KRI',       icon: '📉', roles: ['admin','analyst','auditor'] },
-  { path: '/threat',         label: 'Threat Intel',    icon: '🔥', roles: ['admin','analyst','auditor'] },
-  { path: '/patches',        label: 'Patch Tracker',   icon: '🩹', roles: ['admin','analyst','auditor'] },
-  { path: '/approvals',      label: 'Approvals',       icon: '🔔', roles: ['admin','analyst'] },
-  { path: '/users',          label: 'Users',           icon: '👤', roles: ['admin'] },
-  { path: '/groups/users',   label: 'User Groups',     icon: '👥', roles: ['admin','analyst','auditor','viewer'] },
-  { path: '/groups/assets',  label: 'Asset Groups',    icon: '🖥', roles: ['admin','analyst','auditor','viewer'] },
-  { path: '/audit',          label: 'Audit Log',       icon: '📜', roles: ['admin','auditor'] },
-  { path: '/apikeys',        label: 'API Keys',        icon: '🔑', roles: ['admin','analyst'] },
-  { path: '/settings',       label: 'Settings',        icon: '⚙️', roles: ['admin'] },
+const NAV_GROUPS = [
+  {
+    label: 'Security Operations',
+    items: [
+      { path: '/',               label: 'Dashboard',       icon: '⬛', roles: ['admin','analyst','viewer','auditor'] },
+      { path: '/assets',         label: 'Asset Inventory', icon: '🖥',  roles: ['admin','analyst','viewer','auditor'] },
+      { path: '/scans',          label: 'Scans',           icon: '🔍', roles: ['admin','analyst'] },
+      { path: '/vulnerabilities', label: 'Vulnerabilities',icon: '⚠',  roles: ['admin','analyst','viewer','auditor'] },
+      { path: '/threat',         label: 'Threat Intel',    icon: '🔥', roles: ['admin','analyst','auditor'] },
+      { path: '/patches',        label: 'Patch Tracker',   icon: '🩹', roles: ['admin','analyst','auditor'] },
+    ]
+  },
+  {
+    label: 'Risk & Compliance',
+    items: [
+      { path: '/risks',          label: 'Risk Register',   icon: '📋', roles: ['admin','analyst','viewer','auditor'] },
+      { path: '/compliance',     label: 'Compliance',      icon: '✅', roles: ['admin','analyst','auditor'] },
+      { path: '/maturity',       label: 'Maturity',        icon: '📈', roles: ['admin','analyst','auditor'] },
+      { path: '/certifications', label: 'Certifications',  icon: '🏆', roles: ['admin','analyst','auditor'] },
+      { path: '/reports',        label: 'Reports',         icon: '📊', roles: ['admin','analyst','auditor'] },
+    ]
+  },
+  {
+    label: 'GRC & Governance',
+    items: [
+      { path: '/grc',            label: 'GRC Hub',         icon: '🏛', roles: ['admin','analyst','auditor'] },
+      { path: '/metrics',        label: 'KPI / KRI',       icon: '📉', roles: ['admin','analyst','auditor'] },
+      { path: '/approvals',      label: 'Approvals',       icon: '🔔', roles: ['admin','analyst'] },
+    ]
+  },
+  {
+    label: 'Platform',
+    items: [
+      { path: '/users',          label: 'Users',           icon: '👤', roles: ['admin'] },
+      { path: '/groups/users',   label: 'User Groups',     icon: '👥', roles: ['admin','analyst','auditor','viewer'] },
+      { path: '/groups/assets',  label: 'Asset Groups',    icon: '🖥', roles: ['admin','analyst','auditor','viewer'] },
+      { path: '/audit',          label: 'Audit Log',       icon: '📜', roles: ['admin','auditor'] },
+      { path: '/apikeys',        label: 'API Keys',        icon: '🔑', roles: ['admin','analyst'] },
+      { path: '/settings',       label: 'Settings',        icon: '⚙️', roles: ['admin'] },
+    ]
+  },
 ];
+
+// Flat NAV for backwards-compatible path lookups
+const NAV = NAV_GROUPS.flatMap(g => g.items);
 
 function ChangePasswordModal({ onClose }) {
   const [form, setForm] = useState({ current: '', newPassword: '', confirm: '' });
@@ -424,7 +449,10 @@ function Sidebar() {
   const [changePwd, setChangePwd] = useState(false);
   const [show2fa, setShow2fa] = useState(false);
   const [theme, setTheme] = useTheme();
-  const visible = NAV.filter(n => n.roles.includes(user?.role));
+  const [collapsed, setCollapsed] = useState({});
+
+  const toggleGroup = label => setCollapsed(c => ({ ...c, [label]: !c[label] }));
+
   return (
     <aside className="sidebar">
       <div className="sidebar-brand">
@@ -433,11 +461,29 @@ function Sidebar() {
         <div style={{ marginLeft: 'auto' }}><NotificationBell /></div>
       </div>
       <nav className="sidebar-nav">
-        {visible.map(n => (
-          <Link key={n.path} to={n.path} className={`nav-item ${loc.pathname === n.path || (n.path !== '/' && loc.pathname.startsWith(n.path)) ? 'active' : ''}`}>
-            <span className="nav-icon">{n.icon}</span>{n.label}
-          </Link>
-        ))}
+        {NAV_GROUPS.map(group => {
+          const visibleItems = group.items.filter(n => n.roles.includes(user?.role));
+          if (visibleItems.length === 0) return null;
+          const isCollapsed = collapsed[group.label];
+          return (
+            <div key={group.label}>
+              <div onClick={() => toggleGroup(group.label)}
+                style={{ display:'flex', alignItems:'center', justifyContent:'space-between',
+                         padding:'10px 16px 4px', cursor:'pointer', userSelect:'none' }}>
+                <span style={{ fontSize:10, fontWeight:700, color:'var(--text3)', textTransform:'uppercase',
+                               letterSpacing:'0.08em' }}>{group.label}</span>
+                <span style={{ fontSize:10, color:'var(--text3)', transition:'transform 0.2s',
+                               transform: isCollapsed ? 'rotate(-90deg)' : 'rotate(0deg)' }}>▾</span>
+              </div>
+              {!isCollapsed && visibleItems.map(n => (
+                <Link key={n.path} to={n.path}
+                  className={`nav-item ${loc.pathname === n.path || (n.path !== '/' && loc.pathname.startsWith(n.path)) ? 'active' : ''}`}>
+                  <span className="nav-icon">{n.icon}</span>{n.label}
+                </Link>
+              ))}
+            </div>
+          );
+        })}
       </nav>
       <div className="sidebar-footer">
         <div className="user-info">
@@ -494,7 +540,8 @@ export default function App() {
           <Route path="/risks" element={<PrivateRoute><Risks /></PrivateRoute>} />
           <Route path="/reports" element={<PrivateRoute><Reports /></PrivateRoute>} />
           <Route path="/compliance" element={<PrivateRoute roles={['admin','analyst','auditor']}><Compliance /></PrivateRoute>} />
-          <Route path="/maturity"   element={<PrivateRoute roles={['admin','analyst','auditor']}><MaturityAssessment /></PrivateRoute>} />
+          <Route path="/maturity"        element={<PrivateRoute roles={['admin','analyst','auditor']}><MaturityAssessment /></PrivateRoute>} />
+          <Route path="/certifications" element={<PrivateRoute roles={['admin','analyst','auditor']}><CertificationTracker /></PrivateRoute>} />
           <Route path="/grc"        element={<PrivateRoute roles={['admin','analyst','auditor']}><GRCHub /></PrivateRoute>} />
           <Route path="/metrics"    element={<PrivateRoute roles={['admin','analyst','auditor']}><Metrics /></PrivateRoute>} />
           <Route path="/threat" element={<PrivateRoute roles={['admin','analyst','auditor']}><ThreatIntel /></PrivateRoute>} />
