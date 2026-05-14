@@ -37,9 +37,9 @@ router.get('/executive', auth, async (req, res) => {
     const [assets, openVulns, topRisks, topALE, recentVulns] = await Promise.all([
       db.query(`SELECT COUNT(*) total, COUNT(*) FILTER (WHERE status='active') active, COUNT(*) FILTER (WHERE criticality='critical') critical_count FROM assets`),
       db.query(`SELECT severity, COUNT(*) cnt, SUM(ale) total_ale FROM vulnerabilities WHERE status='open' GROUP BY severity ORDER BY CASE severity WHEN 'critical' THEN 1 WHEN 'high' THEN 2 WHEN 'medium' THEN 3 ELSE 4 END`),
-      db.query(`SELECT r.*, a.ip_address, a.hostname FROM risks r LEFT JOIN assets a ON a.id=r.asset_id WHERE r.status='open' ORDER BY r.risk_score DESC LIMIT 10`),
-      db.query(`SELECT v.title, v.severity, v.ale, v.cve_id, a.ip_address, a.hostname FROM vulnerabilities v LEFT JOIN assets a ON a.id=v.asset_id WHERE v.status='open' ORDER BY v.ale DESC NULLS LAST LIMIT 10`),
-      db.query(`SELECT v.title, v.severity, v.detected_at, a.ip_address FROM vulnerabilities v LEFT JOIN assets a ON a.id=v.asset_id ORDER BY v.detected_at DESC LIMIT 20`),
+      db.query(`SELECT r.id, r.title, r.risk_score, r.risk_level, r.treatment, r.status, a.ip_address, a.hostname FROM risks r LEFT JOIN assets a ON a.id=r.asset_id WHERE r.status='open' ORDER BY r.risk_score DESC LIMIT 10`),
+      db.query(`SELECT v.id, v.title, v.severity, v.ale, v.cve_id, a.ip_address, a.hostname FROM vulnerabilities v LEFT JOIN assets a ON a.id=v.asset_id WHERE v.status='open' ORDER BY v.ale DESC NULLS LAST LIMIT 10`),
+      db.query(`SELECT v.id, v.title, v.severity, v.detected_at, a.ip_address FROM vulnerabilities v LEFT JOIN assets a ON a.id=v.asset_id ORDER BY v.detected_at DESC LIMIT 20`),
     ]);
     const totalALE = openVulns.rows.reduce((s,r)=>s+parseFloat(r.total_ale||0),0);
     res.json({
@@ -243,9 +243,9 @@ router.get('/html', async (req, res) => {
     const [assets, openVulns, topRisks, topALE, recentVulns, assetStats] = await Promise.all([
       db.query(`SELECT COUNT(*) total, COUNT(*) FILTER (WHERE status='active') active, COUNT(*) FILTER (WHERE criticality='critical') critical_count FROM assets`),
       db.query(`SELECT severity, COUNT(*) cnt, SUM(ale) total_ale FROM vulnerabilities WHERE status='open' GROUP BY severity ORDER BY CASE severity WHEN 'critical' THEN 1 WHEN 'high' THEN 2 WHEN 'medium' THEN 3 ELSE 4 END`),
-      db.query(`SELECT r.title, r.risk_score, r.risk_level, r.treatment, a.ip_address, a.hostname FROM risks r LEFT JOIN assets a ON a.id=r.asset_id WHERE r.status='open' ORDER BY r.risk_score DESC LIMIT 10`),
-      db.query(`SELECT v.title, v.severity, v.ale, v.cve_id, a.ip_address, a.hostname FROM vulnerabilities v LEFT JOIN assets a ON a.id=v.asset_id WHERE v.status='open' ORDER BY v.ale DESC NULLS LAST LIMIT 10`),
-      db.query(`SELECT v.title, v.severity, v.detected_at, a.ip_address FROM vulnerabilities v LEFT JOIN assets a ON a.id=v.asset_id ORDER BY v.detected_at DESC LIMIT 20`),
+      db.query(`SELECT r.id, r.title, r.risk_score, r.risk_level, r.treatment, a.ip_address, a.hostname FROM risks r LEFT JOIN assets a ON a.id=r.asset_id WHERE r.status='open' ORDER BY r.risk_score DESC LIMIT 10`),
+      db.query(`SELECT v.id, v.title, v.severity, v.ale, v.cve_id, a.ip_address, a.hostname FROM vulnerabilities v LEFT JOIN assets a ON a.id=v.asset_id WHERE v.status='open' ORDER BY v.ale DESC NULLS LAST LIMIT 10`),
+      db.query(`SELECT v.id, v.title, v.severity, v.detected_at, a.ip_address FROM vulnerabilities v LEFT JOIN assets a ON a.id=v.asset_id ORDER BY v.detected_at DESC LIMIT 20`),
       db.query(`SELECT asset_type, COUNT(*) cnt FROM assets GROUP BY asset_type ORDER BY cnt DESC`),
     ]);
 
