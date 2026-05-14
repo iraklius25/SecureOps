@@ -266,7 +266,7 @@ function CertCard({ cert, orgs, onRefresh, canEdit }) {
       {/* Phase progress bar */}
       <div>
         <div style={{ display:'flex', justifyContent:'space-between', marginBottom:4 }}>
-          <span style={{ ...badge(p.color, p.label) }} />
+          {badge(p.color, p.label)}
           <span style={{ fontSize:13, fontWeight:700, color:f.color }}>{cert.completion_pct}%</span>
         </div>
         <div style={{ height:6, background:'var(--surface3)', borderRadius:3, overflow:'hidden' }}>
@@ -333,8 +333,6 @@ function RequirementsTab({ certs, selCert, setSelCert, canEdit, onRefresh }) {
     a[s] = (a[s]||0) + 1;
     return a;
   }, {});
-
-  const cert = certs.find(c => c.id === selCert);
 
   return (
     <div style={{ display:'grid', gridTemplateColumns:'260px 1fr', gap:20, alignItems:'start' }}>
@@ -784,7 +782,7 @@ function WorkflowsTab({ certs, selCert, setSelCert, canEdit }) {
   );
 }
 
-function WorkflowCard({ workflow, canEdit, onRefresh, onDelete }) {
+function WorkflowCard({ workflow, canEdit, onDelete }) {
   const [steps, setSteps] = useState(workflow.steps || []);
   const [showAdd, setShowAdd] = useState(false);
   const [stepForm, setStepForm] = useState({ title:'', description:'', assignee:'', due_date:'' });
