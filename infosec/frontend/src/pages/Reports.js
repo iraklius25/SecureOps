@@ -1,11 +1,14 @@
 import React, { useState, useEffect, useContext, useCallback } from 'react';
-import { api, AuthContext } from '../App';
+import { api, AuthContext, CurrencyContext } from '../App';
 import {
   AreaChart, Area, BarChart, Bar, LineChart, Line,
   XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer
 } from 'recharts';
 
-const fmt$ = n => '$' + parseFloat(n||0).toLocaleString('en-US',{maximumFractionDigits:0});
+function useFmt() {
+  const { symbol, locale } = useContext(CurrencyContext);
+  return n => symbol + parseFloat(n||0).toLocaleString(locale||'en-US', { maximumFractionDigits: 0 });
+}
 
 function downloadCSV(path, filename) {
   api.get(path, { responseType: 'blob' }).then(r => {
@@ -48,6 +51,7 @@ function DeleteBtn({ onConfirm, label = 'Delete' }) {
 
 /* ─── Trends Tab ─────────────────────────────────── */
 function TrendsTab() {
+  const fmt$ = useFmt();
   const [data, setData] = useState([]);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState('');
@@ -280,6 +284,7 @@ function ScheduledTab() {
 /* ─── Main Reports Page ──────────────────────────── */
 export function Reports() {
   const { user } = useContext(AuthContext);
+  const fmt$ = useFmt();
   const [data,    setData]    = useState(null);
   const [ale,     setAle]     = useState(null);
   const [tab,     setTab]     = useState('executive');

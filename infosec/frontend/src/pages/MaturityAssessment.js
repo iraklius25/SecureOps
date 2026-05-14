@@ -26,6 +26,67 @@ const ISMS_DOMAINS = [
   { id: 'isms_10', clause: '10', short: 'Improvement', name: 'Improvement',             desc: 'Nonconformity handling, corrective actions, and continual improvement of the ISMS' },
 ];
 
+/* ─── NIST CSF 2.0 domains ────────────────────────────────── */
+const NISTCSF_DOMAINS = [
+  { id: 'csf_gv', clause: 'GV', short: 'Govern',   name: 'Govern',   desc: 'Establish and monitor the organisation\'s cybersecurity risk management strategy, expectations, and policy (new in CSF 2.0)' },
+  { id: 'csf_id', clause: 'ID', short: 'Identify',  name: 'Identify', desc: 'Develop an organisational understanding to manage cybersecurity risk to systems, people, assets, data, and capabilities' },
+  { id: 'csf_pr', clause: 'PR', short: 'Protect',   name: 'Protect',  desc: 'Develop and implement appropriate safeguards to ensure delivery of critical services' },
+  { id: 'csf_de', clause: 'DE', short: 'Detect',    name: 'Detect',   desc: 'Develop and implement appropriate activities to identify the occurrence of a cybersecurity event' },
+  { id: 'csf_rs', clause: 'RS', short: 'Respond',   name: 'Respond',  desc: 'Develop and implement appropriate activities to take action regarding a detected cybersecurity incident' },
+  { id: 'csf_rc', clause: 'RC', short: 'Recover',   name: 'Recover',  desc: 'Develop and implement appropriate activities to maintain plans for resilience and restore capabilities impaired by a cybersecurity incident' },
+];
+
+/* ─── PCI DSS v4.0 requirements ───────────────────────────── */
+const PCIDSS_DOMAINS = [
+  { id: 'pci_1',  clause: '1',  short: 'Network',     name: 'Network Security Controls',    desc: 'Install and maintain network security controls (firewalls, routers) to protect the cardholder data environment' },
+  { id: 'pci_2',  clause: '2',  short: 'Config',      name: 'Secure Configurations',        desc: 'Apply secure configurations to all system components; remove vendor defaults and unnecessary services' },
+  { id: 'pci_3',  clause: '3',  short: 'CHD Storage', name: 'Protect Account Data',         desc: 'Protect stored account data — limit retention, mask PAN, encrypt or hash where stored' },
+  { id: 'pci_4',  clause: '4',  short: 'CHD Transit',  name: 'Secure Transmission',         desc: 'Protect cardholder data with strong cryptography during transmission over open, public networks' },
+  { id: 'pci_5',  clause: '5',  short: 'Malware',     name: 'Malware Protection',           desc: 'Protect all systems and networks from malicious software — anti-malware, integrity monitoring' },
+  { id: 'pci_6',  clause: '6',  short: 'Dev/Patch',   name: 'Secure Development',           desc: 'Develop and maintain secure systems and software — patch management, secure SDLC, web app security' },
+  { id: 'pci_7',  clause: '7',  short: 'Access',      name: 'Access Control',               desc: 'Restrict access to system components and cardholder data by business need-to-know; least privilege' },
+  { id: 'pci_8',  clause: '8',  short: 'Identity',    name: 'Identity & Authentication',    desc: 'Identify users and authenticate access to system components — MFA, unique IDs, password policies' },
+  { id: 'pci_9',  clause: '9',  short: 'Physical',    name: 'Physical Access',              desc: 'Restrict physical access to cardholder data — badge access, media controls, visitor management' },
+  { id: 'pci_10', clause: '10', short: 'Logging',     name: 'Logging & Monitoring',         desc: 'Log and monitor all access to system components and cardholder data — audit trails, SIEM, log review' },
+  { id: 'pci_11', clause: '11', short: 'Testing',     name: 'Security Testing',             desc: 'Test security of systems and networks regularly — vulnerability scans, penetration testing, IDS/IPS' },
+  { id: 'pci_12', clause: '12', short: 'Governance',  name: 'InfoSec Policy & Program',     desc: 'Support information security with organisational policies and programs — risk assessments, awareness training, incident response' },
+];
+
+/* ─── SOC 2 Trust Service Criteria ───────────────────────── */
+const SOC2_DOMAINS = [
+  { id: 'soc2_cc', clause: 'CC', short: 'Security',    name: 'Common Criteria (Security)',  desc: 'Logical and physical access controls, change management, risk mitigation, and monitoring (required for all SOC 2 reports)' },
+  { id: 'soc2_a',  clause: 'A',  short: 'Availability', name: 'Availability',               desc: 'System availability for operation and use as committed — uptime SLAs, capacity management, incident response' },
+  { id: 'soc2_pi', clause: 'PI', short: 'Processing',  name: 'Processing Integrity',        desc: 'System processing is complete, valid, accurate, timely, and authorised — error handling, processing monitoring' },
+  { id: 'soc2_c',  clause: 'C',  short: 'Confidentiality', name: 'Confidentiality',         desc: 'Information designated as confidential is protected as committed — encryption, access controls, data classification' },
+  { id: 'soc2_p',  clause: 'P',  short: 'Privacy',     name: 'Privacy',                     desc: 'Personal information is collected, used, retained, disclosed, and disposed of in conformity with commitments — privacy notice, consent, data subject rights' },
+];
+
+/* ─── ISO 22301 (Business Continuity) domains ─────────────── */
+const ISO22301_DOMAINS = [
+  { id: 'bcm_4',  clause: '4',  short: 'Context',     name: 'Context of Organization',   desc: 'Internal/external issues, interested parties, scope of the BCMS, and BCM policy establishment' },
+  { id: 'bcm_5',  clause: '5',  short: 'Leadership',  name: 'Leadership',                desc: 'Top management commitment to BCM, BC policy, and organisational roles, responsibilities, and authorities' },
+  { id: 'bcm_6',  clause: '6',  short: 'Planning',    name: 'Planning',                  desc: 'Business continuity risks and opportunities addressed; BC objectives and plans to achieve them established' },
+  { id: 'bcm_7',  clause: '7',  short: 'Support',     name: 'Support',                   desc: 'Resources, competence, awareness, communication, and documented information for BCMS operation' },
+  { id: 'bcm_8',  clause: '8',  short: 'Operation',   name: 'Operation',                 desc: 'Business impact analysis (BIA), risk assessment, BC strategy, BC plans and procedures, exercising and testing' },
+  { id: 'bcm_9',  clause: '9',  short: 'Evaluation',  name: 'Performance Evaluation',    desc: 'Monitoring, measurement, analysis, evaluation, internal audit, and management review of BCMS' },
+  { id: 'bcm_10', clause: '10', short: 'Improvement', name: 'Improvement',               desc: 'Nonconformity and corrective action, and continual improvement of BCMS effectiveness' },
+];
+
+/* ─── GDPR key obligations ─────────────────────────────────── */
+const GDPR_DOMAINS = [
+  { id: 'gdpr_lb',  clause: 'Art.6',   short: 'Lawful Basis',  name: 'Lawful Basis for Processing',    desc: 'Identify and document a valid lawful basis for each processing activity (consent, contract, legitimate interest, legal obligation, vital interests, public task)' },
+  { id: 'gdpr_tp',  clause: 'Art.13-14', short: 'Transparency', name: 'Transparency & Privacy Notices', desc: 'Provide clear, accessible privacy notices at point of collection; inform data subjects of their rights, retention periods, and data transfers' },
+  { id: 'gdpr_dsr', clause: 'Art.15-22', short: 'DSR',         name: 'Data Subject Rights',            desc: 'Processes in place to honour access (SARs), rectification, erasure, restriction, portability, and objection requests within statutory timescales' },
+  { id: 'gdpr_pbd', clause: 'Art.25',  short: 'PbD',           name: 'Privacy by Design & Default',    desc: 'Data protection embedded into system and process design; only necessary data collected; pseudonymisation and minimisation applied by default' },
+  { id: 'gdpr_dpa', clause: 'Art.28',  short: 'Processors',    name: 'Controller-Processor Contracts', desc: 'GDPR-compliant DPA/data processing agreements in place with all processors; sub-processor chains managed and documented' },
+  { id: 'gdpr_rec', clause: 'Art.30',  short: 'RoPA',          name: 'Records of Processing Activities', desc: 'Article 30 RoPA maintained, accurate, and reviewed regularly; covers all processing activities as controller and processor' },
+  { id: 'gdpr_sec', clause: 'Art.32',  short: 'Security',      name: 'Security of Processing',         desc: 'Appropriate technical and organisational measures (encryption, access controls, pseudonymisation) implemented; security reviewed regularly' },
+  { id: 'gdpr_br',  clause: 'Art.33-34', short: 'Breach',      name: 'Breach Notification',            desc: 'Processes to detect, assess, and notify breaches to supervisory authority within 72 hours; individuals notified where required; breach log maintained' },
+  { id: 'gdpr_dpia', clause: 'Art.35', short: 'DPIA',          name: 'Data Protection Impact Assessment', desc: 'DPIAs conducted before high-risk processing; DPO consulted; prior consultation with SA where residual risk remains high' },
+  { id: 'gdpr_dpo', clause: 'Art.37',  short: 'DPO',           name: 'Data Protection Officer',        desc: 'DPO appointed (where required), independent, with appropriate expertise; contact details published; DPO involved in all GDPR matters' },
+  { id: 'gdpr_it',  clause: 'Ch.V',   short: 'Transfers',      name: 'International Transfers',        desc: 'Transfers outside EEA covered by adequacy decision, SCCs, BCRs, or derogation; transfer impact assessments documented where required' },
+];
+
 /* ─── ISO 42001 hierarchical sections (Clauses 4–10) ───────── */
 const ISO42001_SECTIONS = [
   {
@@ -201,7 +262,7 @@ const ISO42001_ANNEX_A = [
 
 const FRAMEWORKS = {
   ISMS: {
-    label: 'ISMS',
+    label: 'ISO 27001',
     subtitle: 'Information Security Management System — ISO/IEC 27001:2022',
     type: 'flat',
     domains: ISMS_DOMAINS,
@@ -212,6 +273,36 @@ const FRAMEWORKS = {
     type: 'hierarchical',
     sections: ISO42001_SECTIONS,
     annexA: ISO42001_ANNEX_A,
+  },
+  NISTCSF: {
+    label: 'NIST CSF 2.0',
+    subtitle: 'NIST Cybersecurity Framework v2.0 — 6 Functions',
+    type: 'flat',
+    domains: NISTCSF_DOMAINS,
+  },
+  PCIDSS: {
+    label: 'PCI DSS v4',
+    subtitle: 'Payment Card Industry Data Security Standard v4.0 — 12 Requirements',
+    type: 'flat',
+    domains: PCIDSS_DOMAINS,
+  },
+  SOC2: {
+    label: 'SOC 2',
+    subtitle: 'SOC 2 Trust Service Criteria — AICPA',
+    type: 'flat',
+    domains: SOC2_DOMAINS,
+  },
+  ISO22301: {
+    label: 'ISO 22301',
+    subtitle: 'Business Continuity Management System — ISO 22301:2019',
+    type: 'flat',
+    domains: ISO22301_DOMAINS,
+  },
+  GDPR: {
+    label: 'GDPR',
+    subtitle: 'EU General Data Protection Regulation — Key Obligations',
+    type: 'flat',
+    domains: GDPR_DOMAINS,
   },
 };
 
@@ -737,9 +828,7 @@ function AssessmentList({ framework, onSelect }) {
           <div style={{ fontSize: 36, marginBottom: 12 }}>📋</div>
           <div style={{ fontSize: 15, color: 'var(--text2)', marginBottom: 6 }}>No assessments yet</div>
           <div style={{ fontSize: 13, color: 'var(--text3)', marginBottom: 18 }}>
-            {framework === 'ISO42001'
-              ? 'Score all Clauses 4–10 and Annex A controls (26 controls, FH-AIMS-052 SoA) or upload existing evidence documents'
-              : 'Create a blank assessment and score each ISO 27001 clause, or upload existing evidence documents'}
+            Create a blank assessment and score each {fw.label} domain, or upload existing evidence documents.
           </div>
           <button className="btn btn-primary" onClick={() => { setShowCreate(true); setNewName(''); }}>+ New Blank Assessment</button>
         </div>

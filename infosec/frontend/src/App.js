@@ -26,6 +26,23 @@ import CertificationTracker from './pages/CertificationTracker';
 import './App.css';
 
 export const AuthContext = createContext(null);
+export const CurrencyContext = createContext({ symbol: '$', code: 'USD', locale: 'en-US', setCurrency: () => {} });
+
+const CURRENCIES = [
+  { code: 'USD', symbol: '$',  locale: 'en-US', label: 'USD $'  },
+  { code: 'EUR', symbol: '€',  locale: 'de-DE', label: 'EUR €'  },
+  { code: 'GBP', symbol: '£',  locale: 'en-GB', label: 'GBP £'  },
+  { code: 'GEL', symbol: '₾',  locale: 'ka-GE', label: 'GEL ₾'  },
+  { code: 'JPY', symbol: '¥',  locale: 'ja-JP', label: 'JPY ¥'  },
+];
+
+function CurrencyProvider({ children }) {
+  const [currency, setCurrencyState] = useState(() => {
+    try { return JSON.parse(localStorage.getItem('currency')) || CURRENCIES[0]; } catch { return CURRENCIES[0]; }
+  });
+  const setCurrency = c => { setCurrencyState(c); localStorage.setItem('currency', JSON.stringify(c)); };
+  return <CurrencyContext.Provider value={{ ...currency, setCurrency }}>{children}</CurrencyContext.Provider>;
+}
 
 const THEMES = [
   { id: 'warm-dark', label: 'Warm Dark',  color: '#2e2720' },
@@ -43,9 +60,9 @@ function useTheme() {
 }
 
 const FONT_SIZES = [
-  { id: 'sm', label: 'A', px: 13 },
-  { id: 'md', label: 'A', px: 15 },
-  { id: 'lg', label: 'A', px: 17 },
+  { id: 'sm', label: 'S', px: 13 },
+  { id: 'md', label: 'M', px: 15 },
+  { id: 'lg', label: 'L', px: 18 },
 ];
 
 function useFontSize() {
@@ -53,9 +70,9 @@ function useFontSize() {
   const setSize = px => {
     setSizeState(px);
     localStorage.setItem('fontSizePx', String(px));
-    document.documentElement.style.setProperty('--font-base', `${px}px`);
+    document.body.style.fontSize = `${px}px`;
   };
-  useEffect(() => { document.documentElement.style.setProperty('--font-base', `${size}px`); }, [size]);
+  useEffect(() => { document.body.style.fontSize = `${size}px`; }, [size]);
   return [size, setSize];
 }
 
@@ -462,6 +479,7 @@ function NotificationBell() {
 
 function Sidebar() {
   const { user, logout } = useContext(AuthContext);
+  const { code: currCode, setCurrency } = useContext(CurrencyContext);
   const loc = useLocation();
   const [changePwd, setChangePwd] = useState(false);
   const [show2fa, setShow2fa] = useState(false);
@@ -523,9 +541,9 @@ function Sidebar() {
             {FONT_SIZES.map((f, i) => (
               <button key={f.id} title={`${f.px}px`} onClick={() => setFontSize(f.px)}
                 style={{
-                  flex: 1, padding: '3px 0', borderRadius: 5, cursor: 'pointer', fontFamily: 'inherit',
-                  fontSize: 10 + i * 2,
-                  fontWeight: fontSize === f.px ? 700 : 400,
+                  flex: 1, padding: '4px 0', borderRadius: 5, cursor: 'pointer', fontFamily: 'inherit',
+                  fontSize: 11 + i * 2,
+                  fontWeight: fontSize === f.px ? 700 : 500,
                   background: fontSize === f.px ? 'var(--accent)' : 'var(--bg3)',
                   color: fontSize === f.px ? '#fff' : 'var(--text2)',
                   border: `1px solid ${fontSize === f.px ? 'var(--accent)' : 'var(--border)'}`,
@@ -535,6 +553,13 @@ function Sidebar() {
               </button>
             ))}
           </div>
+        </div>
+        <div style={{ marginBottom: 8 }}>
+          <div style={{ fontSize: 10, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 5 }}>Currency</div>
+          <select value={currCode} onChange={e => setCurrency(CURRENCIES.find(c => c.code === e.target.value))}
+            style={{ width: '100%', padding: '4px 8px', background: 'var(--bg3)', color: 'var(--text)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', fontSize: 12, cursor: 'pointer' }}>
+            {CURRENCIES.map(c => <option key={c.code} value={c.code}>{c.label}</option>)}
+          </select>
         </div>
         <button className="logout-btn" onClick={() => setShow2fa(true)} style={{ marginBottom: 6 }}>Setup 2FA</button>
         <button className="logout-btn" onClick={() => setChangePwd(true)} style={{ marginBottom: 6 }}>Change Password</button>
@@ -565,6 +590,7 @@ function PrivateRoute({ children, roles }) {
 
 export default function App() {
   return (
+    <CurrencyProvider>
     <AuthProvider>
       <BrowserRouter>
         <Routes>
@@ -593,5 +619,6 @@ export default function App() {
         </Routes>
       </BrowserRouter>
     </AuthProvider>
+    </CurrencyProvider>
   );
 }
