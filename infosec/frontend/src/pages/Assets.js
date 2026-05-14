@@ -41,14 +41,14 @@ const CHANGE_ICONS = {
 };
 
 /* ── Helpers ───────────────────────────────────────────────────── */
-const clf  = id => CLASSIFICATIONS.find(c => c.id === id) || CLASSIFICATIONS[1];
+const clf  = (id, classes = CLASSIFICATIONS) => classes.find(c => c.id === id) || classes[1];
 const cat  = id => ASSET_CATEGORIES.find(c => c.id === id) || ASSET_CATEGORIES[0];
 const critColor = { critical:'var(--critical)', high:'var(--high)', medium:'var(--medium)', low:'var(--low)' };
 const fmtD = d => d ? new Date(d).toLocaleDateString('en-GB', { day:'2-digit', month:'short', year:'numeric' }) : '—';
 const isOverdue = d => d && new Date(d) < new Date();
 
-const ClassBadge = ({ classification }) => {
-  const c = clf(classification || 'internal');
+const ClassBadge = ({ classification, classes }) => {
+  const c = clf(classification || 'internal', classes);
   return (
     <span style={{ display:'inline-flex', alignItems:'center', padding:'2px 8px', borderRadius:10,
                    fontSize:11, fontWeight:700, background:c.bg, color:c.color, whiteSpace:'nowrap',
@@ -168,8 +168,8 @@ function DataTypesInput({ value = [], onChange }) {
 }
 
 /* ── Asset Detail Modal (ISO 27001 Record View) ────────────────── */
-function AssetDetailModal({ asset, onClose, onEdit, canEdit }) {
-  const c = clf(asset.classification || 'internal');
+function AssetDetailModal({ asset, onClose, onEdit, canEdit, classes = CLASSIFICATIONS }) {
+  const c = clf(asset.classification || 'internal', classes);
   const cc = critColor[asset.criticality] || 'var(--text2)';
   const reviewOverdue = isOverdue(asset.review_date);
 
@@ -200,7 +200,7 @@ function AssetDetailModal({ asset, onClose, onEdit, canEdit }) {
         <div className="modal-header" style={{ borderLeft:`4px solid ${c.color}` }}>
           <div style={{ flex:1 }}>
             <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:4, flexWrap:'wrap' }}>
-              <ClassBadge classification={asset.classification} />
+              <ClassBadge classification={asset.classification} classes={classes} />
               <span style={{ fontSize:11, color:cc, fontWeight:700, background:`${cc}18`,
                               padding:'2px 8px', borderRadius:10, border:`1px solid ${cc}40` }}>
                 {asset.criticality?.toUpperCase()}
@@ -344,7 +344,7 @@ function AssetDetailModal({ asset, onClose, onEdit, canEdit }) {
 }
 
 /* ── Asset Add / Edit Modal ────────────────────────────────────── */
-function AssetModal({ asset, onClose, onSaved }) {
+function AssetModal({ asset, onClose, onSaved, classes = CLASSIFICATIONS }) {
   const [form, setForm] = useState(asset?.id ? {
     ...asset,
     review_date:     asset.review_date?.slice(0,10) || '',
@@ -410,8 +410,8 @@ function AssetModal({ asset, onClose, onSaved }) {
               <div style={{ display:'flex', flexDirection:'column', gap:14 }}>
                 <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12 }}>
                   <div className="form-group">
-                    <label>IP Address *</label>
-                    <input style={inp} value={form.ip_address} onChange={set('ip_address')} required placeholder="192.168.1.1" />
+                    <label>IP Address</label>
+                    <input style={inp} value={form.ip_address} onChange={set('ip_address')} placeholder="192.168.1.1 (optional if hostname is set)" />
                   </div>
                   <div className="form-group">
                     <label>Hostname</label>
@@ -467,7 +467,7 @@ function AssetModal({ asset, onClose, onSaved }) {
                 <div className="form-group">
                   <label>Information Classification (Annex A 5.12)</label>
                   <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:8, marginTop:6 }}>
-                    {CLASSIFICATIONS.map(c => (
+                    {classes.map(c => (
                       <label key={c.id} style={{ display:'flex', alignItems:'flex-start', gap:10, padding:'10px 12px',
                                                    borderRadius:8, cursor:'pointer',
                                                    background: form.classification === c.id ? c.bg : 'var(--surface3)',
@@ -578,6 +578,19 @@ export default function Assets() {
   const [histAsset,      setHistAsset]     = useState(null);
   const [loading,        setLoading]       = useState(true);
   const [stats,          setStats]         = useState(null);
+  const [classifications, setClassifications] = useState(CLASSIFICATIONS);
+
+  useEffect(() => {
+    api.get('/settings').then(r => {
+      const kv = Object.fromEntries(r.data.map(x => [x.key, x.value]));
+      if (kv.asset_classifications) {
+        try {
+          const custom = JSON.parse(kv.asset_classifications);
+          setClassifications(CLASSIFICATIONS.map(c => ({ ...c, label: custom[c.id] || c.label })));
+        } catch {}
+      }
+    }).catch(() => {});
+  }, []);
 
   const loadStats = useCallback(() => {
     api.get('/assets/stats').then(r => setStats(r.data)).catch(console.error);
@@ -636,7 +649,7 @@ export default function Assets() {
       {/* ISO 27001 Classification Stats */}
       {stats && (
         <div style={{ display:'grid', gridTemplateColumns:'repeat(5,1fr)', gap:12, marginBottom:20 }}>
-          {CLASSIFICATIONS.map(c => {
+          {classifications.map(c => {
             const count = stats.by_classification?.[c.id] || 0;
             return (
               <div key={c.id}
@@ -666,7 +679,7 @@ export default function Assets() {
           value={search} onChange={e => { setSearch(e.target.value); setPage(1); }} />
         <select className="filter-select" value={classFilter} onChange={e => { setClassFilter(e.target.value); setPage(1); }}>
           <option value="">All Classifications</option>
-          {CLASSIFICATIONS.map(c => <option key={c.id} value={c.id}>{c.label}</option>)}
+          {classifications.map(c => <option key={c.id} value={c.id}>{c.label}</option>)}
         </select>
         <select className="filter-select" value={criticality} onChange={e => { setCrit(e.target.value); setPage(1); }}>
           <option value="">All Criticality</option>
@@ -709,7 +722,7 @@ export default function Assets() {
                 return (
                   <tr key={a.id} style={{ cursor:'pointer' }} onClick={() => setDetailAsset(a)}>
                     <td onClick={e => e.stopPropagation()}>
-                      <ClassBadge classification={a.classification} />
+                      <ClassBadge classification={a.classification} classes={classifications} />
                     </td>
                     <td className="mono" style={{ color:'var(--info)' }}>{a.ip_address}</td>
                     <td className="mono">{a.hostname || <span className="text-dim">—</span>}</td>
@@ -766,12 +779,14 @@ export default function Assets() {
         <AssetDetailModal
           asset={detailAsset}
           canEdit={canEdit}
+          classes={classifications}
           onClose={() => setDetailAsset(null)}
           onEdit={() => setModal(detailAsset)} />
       )}
       {modal !== null && (
         <AssetModal
           asset={modal?.id ? modal : null}
+          classes={classifications}
           onClose={() => setModal(null)}
           onSaved={() => { setModal(null); load(); loadStats(); }} />
       )}

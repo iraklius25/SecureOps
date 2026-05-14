@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import { api } from '../App';
+import React, { useState, useEffect, useCallback, useContext } from 'react';
+import { api, AuthContext } from '../App';
 import { format } from 'date-fns';
 
 const REPORT_TYPES = ['executive', 'ale', 'vulnerabilities', 'risks'];
@@ -714,8 +714,58 @@ function LDAPTab() {
   );
 }
 
+const DEFAULT_CLASS_LABELS = {
+  public:       'Public',
+  internal:     'Internal',
+  confidential: 'Confidential',
+  restricted:   'Restricted',
+};
+
+function ClassificationLabelsEditor({ form, setForm }) {
+  const labels = (() => {
+    try { return { ...DEFAULT_CLASS_LABELS, ...JSON.parse(form.asset_classifications || '{}') }; }
+    catch { return { ...DEFAULT_CLASS_LABELS }; }
+  })();
+
+  const setLabel = (id, val) => {
+    const updated = { ...labels, [id]: val };
+    setForm(p => ({ ...p, asset_classifications: JSON.stringify(updated) }));
+  };
+
+  const CLASS_COLORS = {
+    public: '#10b981', internal: '#3b82f6', confidential: '#f59e0b', restricted: '#ef4444',
+  };
+
+  return (
+    <div style={{ borderTop: '1px solid var(--border)', paddingTop: 20, marginTop: 8 }}>
+      <div className="card-title" style={{ marginBottom: 6 }}>Asset Classification Labels</div>
+      <div style={{ fontSize: 12, color: 'var(--text3)', marginBottom: 14 }}>
+        Customise the display names for the four ISO 27001 information classification levels.
+        The underlying IDs (public / internal / confidential / restricted) remain unchanged.
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+        {Object.entries(DEFAULT_CLASS_LABELS).map(([id]) => (
+          <div key={id} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <span style={{ width: 10, height: 10, borderRadius: '50%', background: CLASS_COLORS[id], flexShrink: 0 }} />
+            <span style={{ fontSize: 12, color: 'var(--text3)', width: 90, flexShrink: 0, textTransform: 'capitalize' }}>{id}</span>
+            <input
+              value={labels[id]}
+              onChange={e => setLabel(id, e.target.value)}
+              maxLength={30}
+              style={{ flex: 1, background: 'var(--bg3)', border: '1px solid var(--border)', borderRadius: 6,
+                       padding: '6px 10px', color: 'var(--text)', fontSize: 13 }}
+            />
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 /* ─── Main Settings Page ─────────────────────────── */
 export default function Settings() {
+  const { user }    = useContext(AuthContext);
+  const isAdmin     = user?.role === 'admin';
   const [settings,  setSettings]  = useState([]);
   const [schedRpts, setSchedRpts] = useState([]);
   const [tab,       setTab]       = useState('notifications');
@@ -843,6 +893,10 @@ export default function Settings() {
                 desc: 'Details: certification name, framework, phase transition, organisation, completion %' },
               { key: 'notify_on_kpi_change',    label: 'Notify on KPI & KRI Metrics Changes',
                 desc: 'Details: metric name, old/new RAG status (Green/Amber/Red), direction of change' },
+              { key: 'notify_on_new_asset',     label: 'Notify on New Asset Registration',
+                desc: 'Alert when a new asset is manually added to the inventory — IP/hostname, classification, category, owner' },
+              { key: 'notify_on_overdue',       label: 'Notify on Overdue Reviews (Daily at 07:30)',
+                desc: 'Daily digest of overdue asset reviews and open risk reviews past their due date' },
             ].map(({ key, label, desc }) => (
               <div key={key} style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 14 }}>
                 <label style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', flex: 1 }}>
@@ -858,6 +912,8 @@ export default function Settings() {
               </div>
             ))}
           </div>
+
+          {isAdmin && <ClassificationLabelsEditor form={form} setForm={setForm} />}
 
           <div className="modal-footer" style={{ paddingLeft: 0, paddingRight: 0 }}>
             <button className="btn btn-primary" onClick={save}>Save Settings</button>

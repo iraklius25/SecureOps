@@ -1,6 +1,7 @@
 const router = require('express').Router();
 const db = require('../db');
 const { auth, requireRole } = require('../middleware/auth');
+const { notifyNewAsset } = require('../services/notifier');
 
 // GET /api/assets/stats  — ISO 27001 summary (must precede /:id)
 router.get('/stats', auth, async (req, res) => {
@@ -91,7 +92,7 @@ router.post('/', auth, requireRole('admin','analyst'), async (req, res) => {
     asset_value, notes, tags, data_types, review_date,
     last_reviewed_at, reviewed_by, disposal_notes,
   } = req.body;
-  if (!ip_address) return res.status(400).json({ error: 'IP address required' });
+  if (!ip_address && !hostname) return res.status(400).json({ error: 'IP address or hostname is required' });
   try {
     const r = await db.query(`
       INSERT INTO assets (
@@ -102,16 +103,17 @@ router.post('/', auth, requireRole('admin','analyst'), async (req, res) => {
       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)
       RETURNING *
     `, [
-      ip_address, hostname||null, asset_type||'unknown', asset_category||'hardware',
+      ip_address||null, hostname||null, asset_type||'unknown', asset_category||'hardware',
       criticality||'medium', classification||'internal',
       department||null, owner||null, custodian||null, location||null,
       asset_value||50000, notes||null, tags||[],
       data_types||[], review_date||null, last_reviewed_at||null,
       reviewed_by||null, disposal_notes||null,
     ]);
+    notifyNewAsset(r.rows[0]).catch(() => {});
     res.status(201).json(r.rows[0]);
   } catch (e) {
-    if (e.code === '23505') return res.status(409).json({ error: 'Asset with this IP already exists' });
+    if (e.code === '23505') return res.status(409).json({ error: 'An asset with this IP address already exists' });
     res.status(500).json({ error: e.message });
   }
 });

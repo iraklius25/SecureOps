@@ -201,5 +201,60 @@ async function notifyKpiChange(metricName, oldRag, newRag, detail) {
   } catch (e) { logger.error('notifyKpiChange error:', e.message); }
 }
 
+// ── New asset registered notification ────────────────────────
+async function notifyNewAsset(asset) {
+  try {
+    const r = await db.query(`SELECT value FROM settings WHERE key='notify_on_new_asset'`);
+    if (r.rows[0]?.value !== 'true') return;
+    const identifier = asset.hostname || asset.ip_address || asset.id;
+    const title   = `New Asset Registered: ${identifier}`;
+    const message = [
+      asset.ip_address    ? `IP: ${asset.ip_address}`                    : null,
+      asset.hostname      ? `Hostname: ${asset.hostname}`                : null,
+      `Classification: ${(asset.classification || 'internal').toUpperCase()}`,
+      `Category: ${asset.asset_category || 'hardware'}`,
+      asset.owner         ? `Owner: ${asset.owner}`                      : null,
+    ].filter(Boolean).join(' · ');
+    await Promise.all([
+      notifyInApp({ title, message, type: 'info', resource: 'asset', resource_id: asset.id, link: '/assets' }),
+      notifyWebhook({ title, message, type: 'info' }),
+    ]);
+  } catch (e) { logger.error('notifyNewAsset error:', e.message); }
+}
+
+// ── Daily overdue reviews/tasks notification ──────────────────
+async function notifyOverdue() {
+  try {
+    const r = await db.query(`SELECT value FROM settings WHERE key='notify_on_overdue'`);
+    if (r.rows[0]?.value !== 'true') return;
+
+    const [assetReviews, riskReviews] = await Promise.all([
+      db.query(`SELECT COUNT(*) FROM assets
+                WHERE review_date < NOW() AND review_date IS NOT NULL
+                  AND status != 'decommissioned'`),
+      db.query(`SELECT COUNT(*) FROM risks
+                WHERE review_date < NOW() AND review_date IS NOT NULL
+                  AND status = 'open'`),
+    ]);
+
+    const overdueAssets = parseInt(assetReviews.rows[0].count);
+    const overdueRisks  = parseInt(riskReviews.rows[0].count);
+
+    if (overdueAssets === 0 && overdueRisks === 0) return;
+
+    const parts = [];
+    if (overdueAssets > 0) parts.push(`${overdueAssets} asset review(s) overdue`);
+    if (overdueRisks  > 0) parts.push(`${overdueRisks} risk review(s) overdue`);
+
+    const title   = 'Daily Overdue Review Alert';
+    const message = parts.join(' · ') + ' — immediate attention required.';
+    await Promise.all([
+      notifyInApp({ title, message, type: 'warning', resource: 'asset', link: '/assets' }),
+      notifyWebhook({ title, message, type: 'warning' }),
+    ]);
+  } catch (e) { logger.error('notifyOverdue error:', e.message); }
+}
+
 module.exports = { notifyInApp, notifyWebhook, notifyVuln, notifyScanComplete,
-                   notifyNewRisk, notifyApproval, notifyGrcActivity, notifyCertChange, notifyKpiChange };
+                   notifyNewRisk, notifyApproval, notifyGrcActivity, notifyCertChange,
+                   notifyKpiChange, notifyNewAsset, notifyOverdue };
