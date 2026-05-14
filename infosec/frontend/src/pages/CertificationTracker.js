@@ -67,6 +67,90 @@ const REQ_STATUSES = [
   { id: 'not_assessed',    label: 'Not Assessed',    color: '#6b7280' },
 ];
 
+/* ── Framework Implementation Roadmap Data ─────────────────────── */
+const FRAMEWORK_ROADMAP = {
+  PCIDSS: {
+    planning:    { title:'Define CDE Scope & Assemble Team', steps:['Identify all systems storing, processing or transmitting cardholder data (CHD)','Define the Cardholder Data Environment (CDE) boundary precisely','Appoint a PCI DSS owner and engage a Qualified Security Assessor (QSA)','Review all 12 PCI DSS v4.0 requirements and the applicable SAQ type','Set a target certification date and allocate budget'] },
+    gap_analysis:{ title:'Gap Analysis & Baseline Scans', steps:['Self-assess against all 12 PCI DSS requirements','Inventory all in-scope systems, network segments and third-party service providers','Run an Approved Scanning Vendor (ASV) external vulnerability scan','Conduct an internal penetration test baseline','Document all gaps and prioritise by risk level'] },
+    remediation: { title:'Implement Controls & Close Gaps', steps:['Segment CDE from out-of-scope networks (firewalls, VLANs)','Implement strong access control: MFA, unique IDs, least privilege','Encrypt CHD at rest (AES-256) and in transit (TLS 1.2+)','Deploy anti-malware, IDS/IPS and file integrity monitoring (FIM)','Establish centralised logging and alerting for all in-scope systems','Create or update all required security policies and train all staff'] },
+    pre_audit:   { title:'Pre-Audit Validation', steps:['Complete internal assessment against all 12 requirements','Run final ASV scan and resolve all medium/high findings','Conduct full penetration test (network and application layer)','Organise all audit evidence, policies and procedures','Brief the QSA on scope, environment and available documentation'] },
+    audit:       { title:'QSA Formal Assessment', steps:['Provide QSA access to all in-scope systems, documentation and staff','Participate in interviews, walkthroughs and evidence reviews','Address QSA queries with supplementary evidence as requested','Review and approve the draft Report on Compliance (RoC)','Sign the final Attestation of Compliance (AoC)'] },
+    certified:   { title:'Certified — Maintain Controls', steps:['Submit AoC and quarterly ASV scan results to your acquiring bank','Maintain all PCI DSS controls — do not relax after certification','Conduct quarterly internal vulnerability scans','Perform annual penetration testing and staff re-training','Monitor CDE changes that could affect compliance scope'] },
+    surveillance:{ title:'Quarterly Surveillance', steps:['Complete quarterly ASV scans and remediate any new findings','Review and update policies after any significant environment change','Track PCI DSS v4.0 future-dated requirements and their effective dates','Conduct interim gap assessments before the annual re-assessment','Log and investigate all security incidents involving CHD'] },
+    renewal:     { title:'Annual Re-Assessment', steps:['Initiate renewal at least 3 months before AoC expiry','Reassess scope — have new systems entered the CDE?','Schedule the QSA for the annual Report on Compliance','Update all documentation, policies and evidence packages','Address any new v4.0 requirements still in the pipeline'] },
+  },
+  ISO27001: {
+    planning:    { title:'Establish ISMS Scope & Context', steps:['Define the ISMS scope and organisational boundaries (Clause 4)','Identify internal/external issues and interested parties','Obtain top management commitment and appoint an ISMS owner','Establish the ISMS policy and high-level security objectives','Plan project timeline, resources and budget'] },
+    gap_analysis:{ title:'Risk Assessment & Gap Analysis', steps:['Build an information asset inventory (Annex A 5.9)','Conduct an information security risk assessment (Clause 6.1.2)','Evaluate current controls against all 93 Annex A controls (2022 version)','Prepare Statement of Applicability (SoA) for all Annex A controls','Produce a Risk Treatment Plan (RTP) and obtain management approval'] },
+    remediation: { title:'Implement & Document Controls', steps:['Implement priority controls from the Risk Treatment Plan','Develop all required ISMS documents: policies, procedures, guidelines','Establish the management review process (Clause 9.3)','Set up an internal audit programme (Clause 9.2)','Implement security awareness training programme (Annex A 6.3)','Deploy technical controls: access management, encryption, logging, backup'] },
+    pre_audit:   { title:'Internal Audit & Management Review', steps:['Complete a full internal audit against all applicable Clauses 4–10','Audit all relevant Annex A controls and verify supporting evidence','Hold a formal management review meeting and document outcomes','Close all nonconformities identified in the internal audit','Finalise and sign off the Statement of Applicability'] },
+    audit:       { title:'Certification Audit (Stage 1 + Stage 2)', steps:['Stage 1: Submit ISMS documentation for auditor document review','Address all Stage 1 observations before the Stage 2 date','Stage 2: Demonstrate ISMS operation and control effectiveness on-site','Provide evidence of risk assessment, SoA, internal audit and management review','Respond to nonconformities and receive the ISO 27001 certificate'] },
+    certified:   { title:'Certified — Operate the ISMS', steps:['Continue operating all ISMS controls and processes','Maintain and update the risk register for any significant changes','Conduct ongoing security awareness training','Log and investigate all information security incidents','Prepare for the first annual surveillance audit (~12 months)'] },
+    surveillance:{ title:'Annual Surveillance Audit', steps:['Conduct an internal audit covering a subset of Annex A controls','Hold a management review and document corrective actions','Update the risk register and SoA for any scope or context changes','Prepare the surveillance audit evidence package','Host the certification body for the annual surveillance visit'] },
+    renewal:     { title:'Recertification Audit (Year 3)', steps:['Initiate renewal at least 6 months before certificate expiry','Comprehensive internal audit covering all Clauses and Annex A controls','Full management review with updated ISMS objectives','Reassess all risks and update the Risk Treatment Plan','Schedule and complete the recertification audit with the certification body'] },
+  },
+  ISO42001: {
+    planning:    { title:'Establish AI Management System Scope', steps:['Define scope: which AI systems and use cases are in scope?','Map AI roles, stakeholders and impacted parties across the organisation','Obtain top management commitment and appoint an AI governance lead','Review ISO 42001:2023 structure and align with existing ISMS if applicable','Set project timeline and plan stakeholder engagement'] },
+    gap_analysis:{ title:'AI Risk & Impact Assessment', steps:['Inventory all AI systems and their intended uses (Clause 4)','Conduct AI risk assessment: bias, safety, transparency, accountability','Assess AI system impacts on individuals and society','Map current controls against Annex A AI-specific controls','Prepare Statement of Applicability for AI controls','Identify data governance and AI lifecycle management gaps'] },
+    remediation: { title:'Implement AI Governance Controls', steps:['Establish AI policy and measurable AI objectives (Clause 5)','Implement AI risk treatment and human oversight mechanisms','Set up AI system documentation and model cards for each in-scope AI','Establish data quality and training data management procedures','Create AI incident response and corrective action processes','Train all relevant staff on responsible AI use and AIMS procedures'] },
+    pre_audit:   { title:'Internal Audit & AIMS Review', steps:['Complete a full internal audit of the AIMS against all applicable clauses','Review AI system documentation, risk assessments and incident logs','Hold a management review and confirm AI objectives and treatment plans','Close all nonconformities before the certification audit','Prepare AIMS evidence pack: policy, SoA, risk register, audit records'] },
+    audit:       { title:'Certification Audit', steps:['Stage 1: Submit AIMS documentation for auditor review','Resolve Stage 1 observations or documentation gaps','Stage 2: Demonstrate AIMS operation and AI risk register in practice','Provide evidence of human oversight, monitoring and corrective actions','Respond to nonconformities and receive ISO 42001 certificate'] },
+    certified:   { title:'Certified — Operate the AIMS', steps:['Maintain AI risk register and update for new AI deployments','Conduct periodic AI impact reviews for high-risk systems','Log and investigate AI incidents, bias events and near-misses','Keep AI system documentation and model cards current','Prepare for the first surveillance audit (~12 months)'] },
+    surveillance:{ title:'Annual Surveillance Audit', steps:['Internal audit: review AI risk register, incident log and corrective actions','Management review: AIMS performance against AI objectives','Update SoA for any new AI systems or changed use cases','Prepare surveillance audit evidence for the certification body','Host annual surveillance visit'] },
+    renewal:     { title:'Recertification Audit (Year 3)', steps:['Initiate renewal 6 months before certificate expiry','Comprehensive internal audit of all AIMS clauses and Annex A','Reassess all AI risks and update the AI risk register','Management review with updated AIMS objectives','Schedule and complete recertification audit'] },
+  },
+  NISTCSF: {
+    planning:    { title:'Define Scope & Select Tier Target', steps:['Identify critical systems, assets and data flows','Establish risk management context aligned with business priorities','Select a target NIST CSF 2.0 Tier (1–4)','Appoint a cybersecurity programme owner and cross-functional team','Review all 6 CSF Functions: Govern, Identify, Protect, Detect, Respond, Recover'] },
+    gap_analysis:{ title:'Current Profile & Gap Analysis', steps:['Create a Current Profile documenting as-is state for each CSF category','Define a Target Profile aligned to business risk tolerance','Identify and prioritise gaps between Current and Target profiles','Conduct asset inventory and data flow mapping (Identify function)','Assess governance, policies and third-party risk management (Govern function)'] },
+    remediation: { title:'Implement Controls & Improve Posture', steps:['Implement priority Protect controls: access management, data security, training','Deploy Detect capabilities: logging, monitoring and anomaly detection','Establish Respond playbooks: incident response, communications, analysis','Define Recover procedures: recovery planning, improvements, communications','Strengthen Govern function: risk strategy, supply chain risk, executive oversight'] },
+    pre_audit:   { title:'Assessment & Validation', steps:['Reassess Current Profile against each CSF category and subcategory','Verify that priority gaps from the gap analysis have been closed','Conduct or commission an independent cybersecurity assessment','Run tabletop exercises for incident response and recovery scenarios','Review and update all cybersecurity policies and procedures'] },
+    audit:       { title:'Third-Party Assessment', steps:['Commission an independent assessor to evaluate the current profile','Provide access to policies, controls and evidence for each CSF function','Walk the assessor through key controls across all 6 CSF functions','Review assessment findings and agree residual risk acceptance','Produce a final CSF Assessment Report with maturity scores'] },
+    certified:   { title:'Achieved Target Profile', steps:['Publish the achieved Target Profile to relevant stakeholders','Continue monitoring and maintaining all implemented controls','Incorporate CSF metrics into regular risk and executive reporting','Review the Target Profile annually or after significant changes','Engage supply chain partners on CSF alignment and third-party risk'] },
+    surveillance:{ title:'Continuous Improvement', steps:['Review Current Profile quarterly and update for new threats or changes','Monitor NIST for CSF updates and new informative references','Perform tabletop exercises and update response/recovery playbooks','Conduct annual CSF assessments to track progress toward the next Tier','Report cybersecurity posture to leadership using CSF metrics'] },
+    renewal:     { title:'Tier Advancement & Re-Assessment', steps:['Reassess Current Profile against the next target Tier','Update Target Profile with new priorities and risk-informed objectives','Commission independent assessment for the updated profile','Align CSF programme with regulatory or contractual requirements','Document lessons learned and update the cybersecurity improvement plan'] },
+  },
+  SOC2: {
+    planning:    { title:'Define Scope & Trust Service Criteria', steps:['Determine applicable TSC: Security, Availability, Confidentiality, Processing Integrity, Privacy','Define the service system boundary (systems and processes in scope)','Choose SOC 2 Type I (point-in-time) or Type II (6–12 month period)','Engage a licensed CPA auditor and set the audit period start date','Map existing controls to AICPA Common Criteria (CC series)'] },
+    gap_analysis:{ title:'Controls Gap Assessment', steps:['Map current controls to all applicable CC controls','Add supplemental criteria for chosen TSC (A, C, PI, P)','Identify gaps: logical access, change management, monitoring, availability','Review vendor and subservice organisation agreements (CSCs)','Document all gaps with ownership and target remediation dates'] },
+    remediation: { title:'Implement & Evidence Controls', steps:['Implement access controls: MFA, RBAC, quarterly access reviews','Establish change management: approvals, testing, deployment logs','Deploy continuous monitoring: SIEM, IDS, vulnerability scanning','Begin collecting evidence from day 1 of the audit observation period','Develop incident response, BCP and DR plans with staff training'] },
+    pre_audit:   { title:'Audit Readiness Assessment', steps:['Run a readiness assessment against all in-scope Trust Service Criteria','Organise evidence for the entire audit observation period','Verify access reviews, change tickets and incident logs are complete','Prepare the System Description document for CPA review','Brief the auditor on scope, system description and available evidence'] },
+    audit:       { title:'CPA Audit & Report', steps:['Provide auditor with the System Description for review and sign-off','Supply evidence for each tested control: access logs, change records, incidents','Participate in auditor walkthroughs and interviews for each TSC','Address exceptions or control deficiencies identified','Receive and distribute the final SOC 2 Type II report under NDA'] },
+    certified:   { title:'Report Issued — Maintain Controls', steps:['Distribute the SOC 2 report to customers and prospects (under NDA)','Continue operating all controls — the clock starts for next year','Collect evidence continuously throughout the year','Monitor for control exceptions and investigate promptly','Conduct quarterly access reviews and update policies as needed'] },
+    surveillance:{ title:'Annual Audit Period Monitoring', steps:['Maintain continuous evidence: access reviews, change logs, training records','Review and update policies for any changes to the environment','Conduct a mid-period readiness check to identify new gaps','Address incidents or exceptions before the audit period closes','Plan the next audit engagement 2–3 months before the period end'] },
+    renewal:     { title:'Next Audit Period', steps:['Define the new 12-month audit observation period','Reassess scope — have new services or systems been added?','Update the System Description for infrastructure or service changes','Engage the CPA auditor for the new period','Review and update control evidence templates and collection processes'] },
+  },
+  HIPAA: {
+    planning:    { title:'Identify PHI Scope & Appoint Officers', steps:['Determine if you are a Covered Entity (CE) or Business Associate (BA)','Identify all Protected Health Information (PHI) and ePHI in your environment','Appoint a HIPAA Privacy Officer and a HIPAA Security Officer','Review Privacy Rule, Security Rule and Breach Notification Rule requirements','Map Business Associate relationships and plan BAA review'] },
+    gap_analysis:{ title:'Risk Analysis & Safeguards Gap Assessment', steps:['Conduct a thorough Risk Analysis of all ePHI (Security Rule §164.308(a)(1))','Evaluate existing Administrative, Physical and Technical Safeguards','Assess workforce training, access controls, audit logging and transmission security','Review Notice of Privacy Practices and patient rights procedures','Document all gaps with risk severity ratings and remediation owners'] },
+    remediation: { title:'Implement HIPAA Safeguards', steps:['Implement Risk Management Plan to reduce ePHI risks to a reasonable level','Deploy Technical Safeguards: access controls, audit logs, encryption at rest and in transit','Establish Physical Safeguards: facility access, workstation security, device controls','Implement Administrative Safeguards: sanction policy, contingency plan, workforce training','Execute all required Business Associate Agreements (BAAs)','Establish 72-hour Breach Notification procedures'] },
+    pre_audit:   { title:'Internal Assessment & Documentation', steps:['Re-run the Risk Analysis and verify all risks are documented and treated','Verify all required policies: Privacy Policy, Security Policy, Contingency Plan','Review audit logs — are all ePHI access events logged and reviewed?','Conduct a workforce training audit — all staff trained and records documented?','Verify BAAs are in place for all applicable third parties'] },
+    audit:       { title:'Third-Party Audit / OCR Review', steps:['Provide Risk Analysis, Risk Management Plan and supporting policies','Demonstrate access controls, audit log reviews and training records','Show evidence of contingency plan testing (backup/restore, DR)','Provide copies of all active Business Associate Agreements','Respond to findings with a corrective action plan and agreed timeline'] },
+    certified:   { title:'Compliant — Maintain Programme', steps:['Conduct annual HIPAA Risk Analyses (required by the Security Rule)','Re-train all workforce members annually and document completion','Review and update all HIPAA policies annually or after significant changes','Monitor for PHI breaches and notify within 60 days of discovery','Review and update Business Associate Agreements as relationships change'] },
+    surveillance:{ title:'Ongoing HIPAA Compliance', steps:['Review audit logs quarterly for unauthorised ePHI access','Monitor OCR enforcement bulletins for regulatory changes','Test contingency plan and disaster recovery procedures annually','Conduct spot-checks on workforce HIPAA procedures','Reassess Business Associate risk and agreements annually'] },
+    renewal:     { title:'Annual Review & Risk Re-Assessment', steps:['Complete updated annual Risk Analysis for all ePHI','Review and update Risk Management Plan with new treatments','Refresh all workforce HIPAA training and document completion','Audit BAAs for currency and completeness','Update HIPAA policies to reflect regulatory guidance or operational changes'] },
+  },
+  GDPR: {
+    planning:    { title:'Establish Data Protection Programme', steps:['Appoint a Data Protection Officer (DPO) if required by GDPR Art. 37','Define the scope of personal data processing activities','Map all legal bases for processing (consent, LI, contract, legal obligation, etc.)','Establish a Data Protection steering group with legal, IT and operations','Set programme timeline and resource plan for full GDPR compliance'] },
+    gap_analysis:{ title:'Data Mapping & Compliance Gap Analysis', steps:['Complete a Record of Processing Activities (RoPA) — Art. 30 requirement','Identify all personal data flows: collection, storage, transfer, deletion','Identify international transfers and applicable mechanisms (SCCs, adequacy decisions)','Review data subject rights procedures (access, erasure, portability, objection)','Gap-assess against all applicable GDPR articles'] },
+    remediation: { title:'Implement Data Protection Controls', steps:['Implement Privacy by Design and by Default in systems and processes','Update privacy notices and consent mechanisms to GDPR standard','Establish DSAR procedures with 30-day response SLA','Implement data retention and deletion schedules','Conduct DPIAs for all high-risk processing activities','Update Data Processing Agreements (DPAs) with all processors','Establish 72-hour breach notification process to the supervisory authority'] },
+    pre_audit:   { title:'Internal Review & DPA Readiness', steps:['Review RoPA for completeness and accuracy','Verify privacy notices, consent forms and DPAs are current','Test the DSAR process end-to-end','Confirm DPIA register covers all high-risk processing activities','Review breach notification logs and response procedures'] },
+    audit:       { title:'Supervisory Authority Audit / DPA Assessment', steps:['Provide RoPA and privacy notices to the auditor','Demonstrate lawful basis documentation for all processing activities','Show evidence of DSAR processes, DPIA register and breach log','Provide processor agreements and international transfer documentation','Respond to findings with a corrective action plan'] },
+    certified:   { title:'Compliant — Maintain Data Protection', steps:['Keep the RoPA updated as processing activities change','Review privacy notices and consent for any new processing','Monitor DSARs and respond within 30 days','Log all breaches and notify supervisory authority within 72 hours if required','Conduct annual staff data protection training'] },
+    surveillance:{ title:'Ongoing GDPR Compliance', steps:['Quarterly review of the RoPA for accuracy','Annual DPIA review for high-risk processing activities','Monitor EDPB guidance and national DPA decisions for updates','Test breach notification process annually','Review and renew processor agreements as contracts change'] },
+    renewal:     { title:'Annual Compliance Review', steps:['Full review of the Record of Processing Activities','Update DPIA register for changed or new processing activities','Reassess lawful basis for all processing activities','Refresh all staff data protection training','Update privacy notices, consent forms and processor agreements'] },
+  },
+  CUSTOM: {
+    planning:    { title:'Define Programme Scope & Objectives', steps:['Document compliance objectives and success criteria','Identify applicable regulations, standards or internal policies','Appoint a programme owner and assemble a cross-functional team','Define programme scope boundary and applicable assets','Create a high-level project plan with milestones and resource allocation'] },
+    gap_analysis:{ title:'Current State Assessment', steps:['Inventory all systems, data and processes in scope','Assess current controls against applicable requirements','Document and prioritise all gaps by risk level and impact','Define ownership for each gap and agree remediation timelines','Obtain management sign-off on the gap analysis findings'] },
+    remediation: { title:'Implement Required Controls', steps:['Execute the remediation plan for all high-priority gaps','Develop or update required policies, standards and procedures','Implement technical controls and validate effectiveness','Conduct staff training on new requirements and procedures','Collect evidence of control implementation and track progress'] },
+    pre_audit:   { title:'Internal Validation', steps:['Conduct an internal compliance assessment against all requirements','Verify all required documentation and evidence is in place','Close any remaining gaps identified in the internal assessment','Brief the external auditor on scope and available evidence','Prepare the evidence package for the formal audit'] },
+    audit:       { title:'Formal Compliance Assessment', steps:['Provide auditor access to required documentation and personnel','Facilitate walkthroughs and evidence reviews','Respond to auditor queries with additional evidence as needed','Review audit findings and agree corrective action plans','Obtain formal assessment sign-off or certification'] },
+    certified:   { title:'Achieved — Maintain Compliance', steps:['Maintain all implemented controls on an ongoing basis','Monitor for changes to requirements or the operating environment','Conduct regular compliance reviews and management reporting','Investigate and remediate any compliance exceptions promptly','Prepare for the next assessment cycle'] },
+    surveillance:{ title:'Ongoing Monitoring', steps:['Conduct periodic internal assessments to verify control effectiveness','Monitor for regulatory or standard updates affecting compliance','Review and update policies and procedures annually','Report compliance status to leadership on a regular basis','Address any control failures or incidents promptly'] },
+    renewal:     { title:'Re-Assessment & Renewal', steps:['Initiate renewal ahead of the assessment due date','Reassess scope for any changes to systems, processes or requirements','Update documentation, policies and evidence packages','Commission the external assessor for the renewal audit','Implement any new requirements in the updated standard'] },
+  },
+};
+
 /* ── Helpers ───────────────────────────────────────────────────── */
 const fw   = id => FRAMEWORKS.find(f => f.id === id) || { label: id, color: '#6b7280' };
 const ph   = id => PHASES.find(p => p.id === id)     || { label: id, color: '#6b7280' };
@@ -95,10 +179,121 @@ const btnS = (v='default') => {
   return { ...vs[v], borderRadius:6, padding:'7px 14px', cursor:'pointer', fontSize:13, fontWeight:500 };
 };
 
+/* ── Framework Roadmap Component ─────────────────────────────── */
+function FrameworkRoadmap({ framework, currentPhase, compact = false }) {
+  const f = fw(framework);
+  const roadmap = FRAMEWORK_ROADMAP[framework] || FRAMEWORK_ROADMAP.CUSTOM;
+  const currentIdx = PHASES.findIndex(p => p.id === currentPhase);
+  const currentInfo = roadmap[currentPhase] || { title: ph(currentPhase).label, steps: [] };
+  const nextPhase = PHASES[currentIdx + 1];
+  const nextInfo = nextPhase ? (roadmap[nextPhase.id] || { title: nextPhase.label, steps: [] }) : null;
+
+  return (
+    <div style={{ background: compact ? 'transparent' : 'var(--surface3)', border:`1px solid ${f.color}25`,
+                  borderRadius:10, padding: compact ? '12px 0 0' : 20, marginTop: compact ? 8 : 0 }}>
+      {!compact && (
+        <div style={{ fontSize:13, fontWeight:700, color:f.color, marginBottom:16 }}>
+          🗺 Implementation Roadmap — {f.label}
+        </div>
+      )}
+
+      {/* Phase track */}
+      <div style={{ display:'flex', alignItems:'flex-start', overflowX:'auto', paddingBottom:8,
+                    marginBottom: compact ? 10 : 16, gap:0 }}>
+        {PHASES.map((p, i) => {
+          const isDone = i < currentIdx;
+          const isCurr = i === currentIdx;
+          const color  = isCurr ? f.color : isDone ? '#10b981' : 'var(--text3)';
+          return (
+            <React.Fragment key={p.id}>
+              <div style={{ display:'flex', flexDirection:'column', alignItems:'center', minWidth: compact ? 58 : 70 }}>
+                <div style={{ width: compact ? 26 : 32, height: compact ? 26 : 32, borderRadius:'50%',
+                               background: isCurr ? f.color : isDone ? '#10b981' : 'var(--surface2)',
+                               border:`2px solid ${color}`,
+                               display:'flex', alignItems:'center', justifyContent:'center',
+                               fontSize: compact ? 11 : 13, color:(isCurr||isDone)?'#fff':color,
+                               fontWeight:700, flexShrink:0,
+                               boxShadow: isCurr ? `0 0 0 4px ${f.color}25` : 'none' }}>
+                  {isDone ? '✓' : i + 1}
+                </div>
+                <div style={{ fontSize: compact ? 9 : 10, marginTop: compact ? 3 : 5, textAlign:'center',
+                               whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis',
+                               maxWidth: compact ? 54 : 66,
+                               color: isCurr ? f.color : isDone ? '#10b981' : 'var(--text3)',
+                               fontWeight: isCurr ? 700 : isDone ? 500 : 400 }}>
+                  {p.label}
+                </div>
+                {isCurr && <div style={{ fontSize:8, color:f.color, fontWeight:700, marginTop:2,
+                                         textTransform:'uppercase', letterSpacing:'0.05em' }}>▲ HERE</div>}
+              </div>
+              {i < PHASES.length - 1 && (
+                <div style={{ flex:1, height:2, minWidth: compact ? 6 : 10, marginTop: compact ? 12 : 15,
+                               background: i < currentIdx ? '#10b98150' : 'var(--border1)' }} />
+              )}
+            </React.Fragment>
+          );
+        })}
+      </div>
+
+      {/* Current phase steps */}
+      <div style={{ background:'var(--surface2)', border:`1px solid ${f.color}30`, borderRadius:8,
+                    padding: compact ? 10 : 14, marginBottom: nextInfo ? (compact ? 8 : 12) : 0 }}>
+        <div style={{ fontSize: compact ? 11 : 12, fontWeight:700, color:f.color, marginBottom: compact ? 5 : 8,
+                       display:'flex', alignItems:'center', gap:6, flexWrap:'wrap' }}>
+          <span style={{ background:`${f.color}20`, padding:'2px 8px', borderRadius:4, fontSize: compact ? 9 : 10,
+                          textTransform:'uppercase', letterSpacing:'0.05em' }}>Current Phase</span>
+          {currentInfo.title}
+        </div>
+        <ol style={{ margin:0, paddingLeft:18, display:'flex', flexDirection:'column', gap: compact ? 3 : 5 }}>
+          {(compact ? currentInfo.steps.slice(0, 4) : currentInfo.steps).map((step, j) => (
+            <li key={j} style={{ fontSize: compact ? 11 : 12, color:'var(--text2)', lineHeight:1.45 }}>{step}</li>
+          ))}
+          {compact && currentInfo.steps.length > 4 && (
+            <li style={{ fontSize:10, color:'var(--text3)', listStyle:'none', marginLeft:-18, marginTop:2, fontStyle:'italic' }}>
+              +{currentInfo.steps.length - 4} more steps…
+            </li>
+          )}
+        </ol>
+      </div>
+
+      {/* Next phase */}
+      {nextInfo && !compact && (
+        <div style={{ background:'var(--surface2)', border:'1px solid var(--border1)', borderRadius:8, padding:14, opacity:0.8 }}>
+          <div style={{ fontSize:12, fontWeight:700, color:'var(--text3)', marginBottom:8, display:'flex', alignItems:'center', gap:6 }}>
+            <span style={{ background:'var(--surface3)', padding:'2px 8px', borderRadius:4, fontSize:10,
+                            textTransform:'uppercase', letterSpacing:'0.05em' }}>Next →</span>
+            {nextInfo.title}
+          </div>
+          <ol style={{ margin:0, paddingLeft:18, display:'flex', flexDirection:'column', gap:4 }}>
+            {nextInfo.steps.slice(0, 3).map((step, j) => (
+              <li key={j} style={{ fontSize:12, color:'var(--text3)', lineHeight:1.4 }}>{step}</li>
+            ))}
+            {nextInfo.steps.length > 3 && (
+              <li style={{ fontSize:11, color:'var(--text3)', listStyle:'none', marginLeft:-18, marginTop:2, fontStyle:'italic' }}>
+                +{nextInfo.steps.length - 3} more steps in next phase…
+              </li>
+            )}
+          </ol>
+        </div>
+      )}
+
+      {/* Compact next tip */}
+      {nextInfo && compact && (
+        <div style={{ padding:'6px 10px', background:'var(--surface2)', borderRadius:6, fontSize:11,
+                       color:'var(--text3)', display:'flex', gap:6, alignItems:'flex-start' }}>
+          <span style={{ color:'#f59e0b', fontWeight:700, flexShrink:0 }}>→ Next:</span>
+          <span><strong style={{ color:'var(--text2)' }}>{nextInfo.title}</strong> — {nextInfo.steps[0]}</span>
+        </div>
+      )}
+    </div>
+  );
+}
+
 /* ── CertificationTracker ─────────────────────────────────────── */
 export default function CertificationTracker() {
   const { user } = useContext(AuthContext);
   const canEdit  = ['admin','analyst'].includes(user?.role);
+  const isAdmin  = user?.role === 'admin';
 
   const [tab,   setTab]   = useState('overview');
   const [certs, setCerts] = useState([]);
@@ -148,7 +343,7 @@ export default function CertificationTracker() {
       {loading ? <div className="empty-state"><div className="spinner" /></div> : (
         <>
           {tab === 'overview'     && <OverviewTab certs={certs} orgs={orgs} avgCompletion={avgCompletion}
-                                                  overdue={overdue} canEdit={canEdit} onRefresh={load} />}
+                                                  overdue={overdue} canEdit={canEdit} isAdmin={isAdmin} onRefresh={load} />}
           {tab === 'requirements' && <RequirementsTab certs={certs} selCert={selCert} setSelCert={setSelCert}
                                                        canEdit={canEdit} onRefresh={load} />}
           {tab === 'timeline'     && <TimelineTab certs={certs} selCert={selCert} setSelCert={setSelCert}
@@ -162,11 +357,21 @@ export default function CertificationTracker() {
 }
 
 /* ── Overview Tab ─────────────────────────────────────────────── */
-function OverviewTab({ certs, orgs, avgCompletion, overdue, canEdit, onRefresh }) {
+function OverviewTab({ certs, orgs, avgCompletion, overdue, canEdit, isAdmin, onRefresh }) {
   const [showNewCert, setShowNewCert] = useState(false);
   const [showNewOrg,  setShowNewOrg]  = useState(false);
   const [filterFw,    setFilterFw]    = useState('');
   const [filterStatus,setFilterStatus]= useState('');
+
+  const deleteOrg = async (id, name) => {
+    if (!window.confirm(`Delete organization "${name}"?\n\nCertifications linked to this organization will have their organization field cleared.`)) return;
+    try {
+      await api.delete(`/certifications/organizations/${id}`);
+      onRefresh();
+    } catch (e) {
+      alert(e.response?.data?.error || 'Failed to delete organization');
+    }
+  };
 
   const visible = certs.filter(c =>
     (!filterFw     || c.framework === filterFw) &&
@@ -224,18 +429,28 @@ function OverviewTab({ certs, orgs, avgCompletion, overdue, canEdit, onRefresh }
       {Object.keys(byOrg).length === 0 ? (
         <div className="empty-state"><p>No certifications found. Add one to get started.</p></div>
       ) : (
-        Object.entries(byOrg).map(([orgName, orgCerts]) => (
+        Object.entries(byOrg).map(([orgName, orgCerts]) => {
+          const orgObj = orgs.find(o => o.name === orgName);
+          return (
           <div key={orgName} style={{ marginBottom:28 }}>
             <div style={{ fontSize:13, fontWeight:700, color:'var(--text2)', textTransform:'uppercase',
-                          letterSpacing:'0.07em', marginBottom:12, display:'flex', alignItems:'center', gap:8 }}>
+                          letterSpacing:'0.07em', marginBottom:12, display:'flex', alignItems:'center', gap:8, flexWrap:'wrap' }}>
               🏢 {orgName}
               <span style={{ fontSize:11, fontWeight:400, color:'var(--text3)' }}>({orgCerts.length} certification{orgCerts.length!==1?'s':''})</span>
+              {orgObj?.industry && <span style={{ fontSize:10, fontWeight:400, color:'var(--text3)', textTransform:'none' }}>{orgObj.industry}</span>}
+              {isAdmin && orgObj && (
+                <button style={{ ...btnS('danger'), padding:'2px 9px', fontSize:10, marginLeft:'auto', textTransform:'none', letterSpacing:0 }}
+                  onClick={() => deleteOrg(orgObj.id, orgName)}>
+                  Delete Org
+                </button>
+              )}
             </div>
             <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill, minmax(300px,1fr))', gap:14 }}>
               {orgCerts.map(c => <CertCard key={c.id} cert={c} orgs={orgs} onRefresh={onRefresh} canEdit={canEdit} />)}
             </div>
           </div>
-        ))
+          );
+        })
       )}
 
       {showNewCert && <CertModal orgs={orgs} onClose={() => setShowNewCert(false)} onSave={onRefresh} />}
@@ -247,7 +462,8 @@ function OverviewTab({ certs, orgs, avgCompletion, overdue, canEdit, onRefresh }
 function CertCard({ cert, orgs, onRefresh, canEdit }) {
   const f = fw(cert.framework);
   const p = ph(cert.phase);
-  const [showEdit, setShowEdit] = useState(false);
+  const [showEdit,    setShowEdit]    = useState(false);
+  const [showRoadmap, setShowRoadmap] = useState(false);
 
   const handleDelete = async () => {
     if (!window.confirm(`Delete "${cert.name}"?`)) return;
@@ -311,6 +527,13 @@ function CertCard({ cert, orgs, onRefresh, canEdit }) {
           <button style={{ ...btnS('danger'), padding:'4px 10px', fontSize:12 }} onClick={handleDelete}>Delete</button>
         </div>
       )}
+      <button style={{ ...btnS('sm'), width:'100%', marginTop:4, fontSize:11,
+                        color: showRoadmap ? f.color : 'var(--text3)',
+                        border: `1px solid ${showRoadmap ? f.color : 'var(--border2)'}` }}
+        onClick={() => setShowRoadmap(r => !r)}>
+        {showRoadmap ? '▲ Hide Roadmap' : '🗺 View Implementation Roadmap'}
+      </button>
+      {showRoadmap && <FrameworkRoadmap framework={cert.framework} currentPhase={cert.phase} compact />}
       {showEdit && <CertModal cert={cert} orgs={[]} onClose={() => setShowEdit(false)} onSave={onRefresh} />}
     </div>
   );
@@ -324,7 +547,8 @@ function RequirementsTab({ certs, selCert, setSelCert, canEdit, onRefresh }) {
   const [search,   setSearch]   = useState('');
   const [editReq,  setEditReq]  = useState(null);
   const [loading,  setLoading]  = useState(false);
-  const [expanded, setExpanded] = useState({});
+  const [expanded,    setExpanded]    = useState({});
+  const [showRoadmap, setShowRoadmap] = useState(false);
 
   useEffect(() => {
     if (!selCert) return;
@@ -383,6 +607,30 @@ function RequirementsTab({ certs, selCert, setSelCert, canEdit, onRefresh }) {
           <div className="empty-state"><div className="spinner" /></div>
         ) : (
           <>
+            {/* Roadmap toggle */}
+            {(() => {
+              const selCertObj = certs.find(c => c.id === selCert);
+              if (!selCertObj) return null;
+              const f = fw(selCertObj.framework);
+              return (
+                <div style={{ marginBottom:16 }}>
+                  <button style={{ ...btnS('sm'), fontSize:11, width:'100%', justifyContent:'center',
+                                    display:'flex', alignItems:'center', gap:6,
+                                    color: showRoadmap ? f.color : 'var(--text3)',
+                                    border:`1px solid ${showRoadmap ? f.color : 'var(--border2)'}` }}
+                    onClick={() => setShowRoadmap(r => !r)}>
+                    🗺 {showRoadmap ? '▲ Hide Implementation Roadmap' : 'View Implementation Roadmap'}
+                    <span style={{ fontSize:10, color:'var(--text3)', fontWeight:400 }}>— {ph(selCertObj.phase).label} phase</span>
+                  </button>
+                  {showRoadmap && (
+                    <div style={{ background:'var(--surface2)', border:`1px solid ${f.color}25`, borderRadius:10, padding:20, marginTop:8 }}>
+                      <FrameworkRoadmap framework={selCertObj.framework} currentPhase={selCertObj.phase} compact={false} />
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
+
             {/* Stats chips */}
             <div style={{ display:'flex', gap:8, marginBottom:16, flexWrap:'wrap' }}>
               {REQ_STATUSES.map(s => (
@@ -532,10 +780,6 @@ function TimelineTab({ certs, selCert, setSelCert, canEdit, onRefresh }) {
   const statusColor = { planned:'#6b7280', completed:'#10b981', cancelled:'#9ca3af', overdue:'#ef4444' };
 
   const cert = certs.find(c => c.id === selCert);
-  const certPhases = PHASES.map(p => ({
-    ...p,
-    isCurrent: cert?.phase === p.id,
-  }));
 
   return (
     <div style={{ display:'grid', gridTemplateColumns:'260px 1fr', gap:20, alignItems:'start' }}>
@@ -565,32 +809,10 @@ function TimelineTab({ certs, selCert, setSelCert, canEdit, onRefresh }) {
           <div className="empty-state"><p>Select a certification to view its timeline.</p></div>
         ) : (
           <>
-            {/* Phase progress track */}
+            {/* Phase progress track + Roadmap */}
             {cert && (
               <div style={{ background:'var(--surface2)', border:'1px solid var(--border1)', borderRadius:12, padding:20, marginBottom:20 }}>
-                <div style={{ fontSize:12, fontWeight:700, color:'var(--text3)', textTransform:'uppercase', letterSpacing:'0.06em', marginBottom:14 }}>
-                  Certification Phase Progress
-                </div>
-                <div style={{ display:'flex', alignItems:'center', gap:0, overflowX:'auto' }}>
-                  {certPhases.map((p, i) => (
-                    <React.Fragment key={p.id}>
-                      <div style={{ display:'flex', flexDirection:'column', alignItems:'center', minWidth:80 }}>
-                        <div style={{ width:32, height:32, borderRadius:'50%', background: p.isCurrent?p.color:`${p.color}30`,
-                                      border:`2px solid ${p.color}`, display:'flex', alignItems:'center', justifyContent:'center',
-                                      fontSize:14, color: p.isCurrent?'#fff':p.color, fontWeight:700 }}>
-                          {i+1}
-                        </div>
-                        <div style={{ fontSize:10, color: p.isCurrent?p.color:'var(--text3)', fontWeight: p.isCurrent?700:400,
-                                      marginTop:5, textAlign:'center', whiteSpace:'nowrap' }}>
-                          {p.label}
-                        </div>
-                      </div>
-                      {i < certPhases.length-1 && (
-                        <div style={{ flex:1, height:2, background:'var(--border1)', minWidth:16 }} />
-                      )}
-                    </React.Fragment>
-                  ))}
-                </div>
+                <FrameworkRoadmap framework={cert.framework} currentPhase={cert.phase} compact={false} />
               </div>
             )}
 
