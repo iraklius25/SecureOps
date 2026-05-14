@@ -80,19 +80,20 @@ router.delete('/timeline/:eventId', auth, requireRole('admin','analyst'), async 
 /* ── Workflow Steps (must precede /workflows/:wfId) ────────────── */
 
 router.put('/workflows/steps/:stepId', auth, requireRole('admin','analyst'), async (req, res) => {
-  const { title, description, assignee, due_date, status, notes, step_number } = req.body;
+  const { title, description, assignee, due_date, status, notes, step_number, priority } = req.body;
   try {
     const r = await db.query(
       `UPDATE cert_workflow_steps
        SET title=$1, description=$2, assignee=$3, due_date=$4, status=$5, notes=$6,
-           step_number=$7,
+           step_number=$7, priority=$8,
            completed_at = CASE WHEN $5='completed' AND completed_at IS NULL THEN NOW()
                                WHEN $5 != 'completed' THEN NULL
                                ELSE completed_at END,
            updated_at=NOW()
-       WHERE id=$8 RETURNING *`,
+       WHERE id=$9 RETURNING *`,
       [title, description||null, assignee||null, due_date||null,
-       status||'pending', notes||null, step_number||1, req.params.stepId]
+       status||'pending', notes||null, step_number||1,
+       priority||'medium', req.params.stepId]
     );
     res.json(r.rows[0]);
   } catch (e) { res.status(500).json({ error: e.message }); }
@@ -106,7 +107,7 @@ router.delete('/workflows/steps/:stepId', auth, requireRole('admin','analyst'), 
 });
 
 router.post('/workflows/:wfId/steps', auth, requireRole('admin','analyst'), async (req, res) => {
-  const { title, description, assignee, due_date } = req.body;
+  const { title, description, assignee, due_date, status, priority } = req.body;
   if (!title?.trim()) return res.status(400).json({ error: 'title required' });
   try {
     const max = await db.query(
@@ -114,9 +115,10 @@ router.post('/workflows/:wfId/steps', auth, requireRole('admin','analyst'), asyn
       [req.params.wfId]
     );
     const r = await db.query(
-      `INSERT INTO cert_workflow_steps (workflow_id, step_number, title, description, assignee, due_date)
-       VALUES ($1,$2,$3,$4,$5,$6) RETURNING *`,
-      [req.params.wfId, max.rows[0].mx + 1, title.trim(), description||null, assignee||null, due_date||null]
+      `INSERT INTO cert_workflow_steps (workflow_id, step_number, title, description, assignee, due_date, status, priority)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *`,
+      [req.params.wfId, max.rows[0].mx + 1, title.trim(), description||null,
+       assignee||null, due_date||null, status||'pending', priority||'medium']
     );
     res.json(r.rows[0]);
   } catch (e) { res.status(500).json({ error: e.message }); }

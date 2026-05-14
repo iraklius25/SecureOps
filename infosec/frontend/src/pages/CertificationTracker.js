@@ -37,10 +37,27 @@ const TL_TYPES = [
 const STEP_STATUSES = [
   { id: 'pending',     label: 'Pending',     color: '#6b7280' },
   { id: 'in_progress', label: 'In Progress', color: '#3b82f6' },
+  { id: 'in_review',   label: 'In Review',   color: '#8b5cf6' },
   { id: 'completed',   label: 'Completed',   color: '#10b981' },
   { id: 'blocked',     label: 'Blocked',     color: '#ef4444' },
   { id: 'skipped',     label: 'Skipped',     color: '#9ca3af' },
 ];
+
+const KANBAN_COLS = [
+  { id: 'pending',     label: 'To Do',       color: '#64748b' },
+  { id: 'in_progress', label: 'In Progress', color: '#3b82f6' },
+  { id: 'in_review',   label: 'In Review',   color: '#8b5cf6' },
+  { id: 'blocked',     label: 'Blocked',     color: '#ef4444' },
+  { id: 'completed',   label: 'Done',        color: '#10b981' },
+];
+
+const KANBAN_PRIORITIES = [
+  { id: 'critical', label: 'Critical', color: '#ef4444' },
+  { id: 'high',     label: 'High',     color: '#f97316' },
+  { id: 'medium',   label: 'Medium',   color: '#eab308' },
+  { id: 'low',      label: 'Low',      color: '#22c55e' },
+];
+const kpri = id => KANBAN_PRIORITIES.find(p => p.id === id) || KANBAN_PRIORITIES[2];
 
 const REQ_STATUSES = [
   { id: 'compliant',       label: 'Compliant',       color: '#10b981' },
@@ -679,231 +696,454 @@ function TimelineTab({ certs, selCert, setSelCert, canEdit, onRefresh }) {
   );
 }
 
-/* ── Workflows Tab ────────────────────────────────────────────── */
+/* ── Workflows Tab (Kanban) ───────────────────────────────────── */
 function WorkflowsTab({ certs, selCert, setSelCert, canEdit }) {
   const [workflows, setWorkflows] = useState([]);
-  const [loading, setLoading]   = useState(false);
-  const [newWfName, setNewWfName] = useState('');
-  const [newWfDesc, setNewWfDesc] = useState('');
-  const [showNewWf, setShowNewWf] = useState(false);
+  const [selWf,     setSelWf]     = useState(null);
+  const [loading,   setLoading]   = useState(false);
+  const [showNew,   setShowNew]   = useState(false);
+  const [newName,   setNewName]   = useState('');
+  const [newDesc,   setNewDesc]   = useState('');
 
   const loadWf = useCallback(() => {
     if (!selCert) return;
     setLoading(true);
     api.get(`/certifications/${selCert}/workflows`)
-      .then(r => setWorkflows(r.data))
+      .then(r => { setWorkflows(r.data); if (r.data.length && !selWf) setSelWf(r.data[0].id); })
       .catch(console.error)
       .finally(() => setLoading(false));
-  }, [selCert]);
+  }, [selCert]); // eslint-disable-line
 
+  useEffect(() => { setSelWf(null); setWorkflows([]); }, [selCert]);
   useEffect(() => { loadWf(); }, [loadWf]);
 
   const createWf = async () => {
-    if (!newWfName.trim()) return;
-    await api.post(`/certifications/${selCert}/workflows`, { name: newWfName, description: newWfDesc }).catch(console.error);
-    setNewWfName(''); setNewWfDesc(''); setShowNewWf(false); loadWf();
+    if (!newName.trim()) return;
+    const r = await api.post(`/certifications/${selCert}/workflows`, { name: newName, description: newDesc }).catch(console.error);
+    if (r?.data) { setNewName(''); setNewDesc(''); setShowNew(false); loadWf(); setSelWf(r.data.id); }
   };
 
   const deleteWf = async id => {
-    if (!window.confirm('Delete this workflow?')) return;
+    if (!window.confirm('Delete this board and all its cards?')) return;
     await api.delete(`/certifications/workflows/${id}`).catch(console.error);
+    if (selWf === id) setSelWf(null);
     loadWf();
   };
 
+  const currentWf = workflows.find(w => w.id === selWf);
+
   return (
-    <div style={{ display:'grid', gridTemplateColumns:'260px 1fr', gap:20, alignItems:'start' }}>
-      {/* Cert selector */}
-      <div style={{ background:'var(--surface2)', border:'1px solid var(--border1)', borderRadius:12, overflow:'hidden' }}>
-        <div style={{ padding:'12px 16px', borderBottom:'1px solid var(--border1)', fontSize:12, fontWeight:700,
-                      textTransform:'uppercase', letterSpacing:'0.06em', color:'var(--text3)' }}>
-          Select Certification
+    <div style={{ display:'grid', gridTemplateColumns:'220px 1fr', gap:20, alignItems:'start' }}>
+      {/* Left sidebar: cert + board list */}
+      <div style={{ display:'flex', flexDirection:'column', gap:12 }}>
+        <div style={{ background:'var(--surface2)', border:'1px solid var(--border1)', borderRadius:12, overflow:'hidden' }}>
+          <div style={{ padding:'10px 14px', borderBottom:'1px solid var(--border1)', fontSize:11, fontWeight:700,
+                        textTransform:'uppercase', letterSpacing:'0.07em', color:'var(--text3)' }}>Certification</div>
+          {certs.length === 0 && <div style={{ padding:'16px 14px', fontSize:12, color:'var(--text3)' }}>No certifications yet</div>}
+          {certs.map(c => {
+            const f = fw(c.framework);
+            return (
+              <div key={c.id} onClick={() => setSelCert(c.id)}
+                style={{ padding:'10px 14px', cursor:'pointer', borderBottom:'1px solid var(--border1)',
+                         borderLeft:`3px solid ${selCert===c.id ? f.color : 'transparent'}`,
+                         background: selCert===c.id ? `${f.color}12` : 'transparent' }}>
+                <div style={{ fontSize:10, color:f.color, fontWeight:700, textTransform:'uppercase' }}>{f.label}</div>
+                <div style={{ fontSize:13, fontWeight:600, color:'var(--text1)', marginTop:1 }}>{c.name}</div>
+              </div>
+            );
+          })}
         </div>
-        {certs.map(c => {
-          const f = fw(c.framework);
-          return (
-            <div key={c.id} onClick={() => setSelCert(c.id)}
-              style={{ padding:'12px 16px', cursor:'pointer', borderLeft:`3px solid ${selCert===c.id?f.color:'transparent'}`,
-                       background: selCert===c.id?`${f.color}10`:'transparent', borderBottom:'1px solid var(--border1)' }}>
-              <div style={{ fontSize:10, color:f.color, fontWeight:700, textTransform:'uppercase' }}>{f.label}</div>
-              <div style={{ fontSize:13, fontWeight:600, color:'var(--text1)', marginTop:2 }}>{c.name}</div>
-              <div style={{ fontSize:11, color:'var(--text3)' }}>{c.org_name || 'No org'}</div>
+
+        {selCert && (
+          <div style={{ background:'var(--surface2)', border:'1px solid var(--border1)', borderRadius:12, overflow:'hidden' }}>
+            <div style={{ padding:'10px 14px', borderBottom:'1px solid var(--border1)', fontSize:11, fontWeight:700,
+                          textTransform:'uppercase', letterSpacing:'0.07em', color:'var(--text3)',
+                          display:'flex', alignItems:'center', justifyContent:'space-between' }}>
+              Boards
+              {canEdit && <button onClick={() => setShowNew(true)}
+                style={{ background:'none', border:'none', cursor:'pointer', color:'var(--accent)', fontSize:18, lineHeight:1, padding:0 }}>+</button>}
             </div>
-          );
-        })}
+            {loading && <div style={{ padding:12 }}><div className="spinner" /></div>}
+            {workflows.map(w => (
+              <div key={w.id} onClick={() => setSelWf(w.id)}
+                style={{ padding:'10px 14px', cursor:'pointer', borderBottom:'1px solid var(--border1)',
+                         borderLeft:`3px solid ${selWf===w.id ? 'var(--accent)' : 'transparent'}`,
+                         background: selWf===w.id ? 'var(--surface3)' : 'transparent',
+                         display:'flex', alignItems:'center', justifyContent:'space-between' }}>
+                <div style={{ minWidth:0 }}>
+                  <div style={{ fontSize:13, fontWeight:600, color:'var(--text1)', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{w.name}</div>
+                  {w.description && <div style={{ fontSize:11, color:'var(--text3)', marginTop:1, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{w.description}</div>}
+                </div>
+                {canEdit && selWf===w.id && (
+                  <button onClick={e => { e.stopPropagation(); deleteWf(w.id); }}
+                    style={{ background:'none', border:'none', cursor:'pointer', color:'#ef4444', fontSize:13, flexShrink:0, padding:'0 2px' }}>✕</button>
+                )}
+              </div>
+            ))}
+            {!loading && workflows.length === 0 && (
+              <div style={{ padding:'16px 14px', fontSize:12, color:'var(--text3)' }}>No boards yet — create one</div>
+            )}
+          </div>
+        )}
+
+        {showNew && (
+          <div style={{ background:'var(--surface2)', border:'1px solid var(--border1)', borderRadius:12, padding:14 }}>
+            <div style={{ fontSize:13, fontWeight:700, marginBottom:10, color:'var(--text1)' }}>New Board</div>
+            <input style={{ ...inp, marginBottom:8 }} placeholder="Board name *" value={newName}
+              onChange={e => setNewName(e.target.value)} autoFocus
+              onKeyDown={e => { if (e.key==='Enter') createWf(); if (e.key==='Escape') setShowNew(false); }} />
+            <input style={{ ...inp, marginBottom:10 }} placeholder="Description (optional)" value={newDesc} onChange={e => setNewDesc(e.target.value)} />
+            <div style={{ display:'flex', gap:6 }}>
+              <button style={{ ...btnS('default'), flex:1 }} onClick={() => setShowNew(false)}>Cancel</button>
+              <button style={{ ...btnS('primary'), flex:1 }} onClick={createWf}>Create</button>
+            </div>
+          </div>
+        )}
       </div>
 
-      {/* Workflows panel */}
+      {/* Right: Kanban board */}
       <div>
         {!selCert ? (
-          <div className="empty-state"><p>Select a certification to view its workflows.</p></div>
+          <div className="empty-state"><p>Select a certification to view boards.</p></div>
+        ) : !currentWf ? (
+          <div className="empty-state">
+            <div className="empty-icon">📋</div>
+            <p>Select a board from the left or create a new one.</p>
+            {canEdit && <button className="btn btn-primary" onClick={() => setShowNew(true)}>+ New Board</button>}
+          </div>
         ) : (
-          <>
-            <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:16 }}>
-              <div style={{ fontSize:15, fontWeight:700, color:'var(--text1)' }}>Workflows ({workflows.length})</div>
-              {canEdit && <button style={btnS('primary')} onClick={() => setShowNewWf(true)}>+ New Workflow</button>}
-            </div>
-
-            {showNewWf && (
-              <div style={{ background:'var(--surface2)', border:'1px solid var(--border1)', borderRadius:12, padding:20, marginBottom:20 }}>
-                <div style={{ fontSize:14, fontWeight:700, marginBottom:12 }}>New Workflow</div>
-                <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12, marginBottom:12 }}>
-                  <div>
-                    <label style={{ fontSize:12, color:'var(--text3)', display:'block', marginBottom:5 }}>Name *</label>
-                    <input style={inp} value={newWfName} onChange={e => setNewWfName(e.target.value)} placeholder="e.g., Gap Remediation" />
-                  </div>
-                  <div>
-                    <label style={{ fontSize:12, color:'var(--text3)', display:'block', marginBottom:5 }}>Description</label>
-                    <input style={inp} value={newWfDesc} onChange={e => setNewWfDesc(e.target.value)} placeholder="Optional" />
-                  </div>
-                </div>
-                <div style={{ display:'flex', gap:8, justifyContent:'flex-end' }}>
-                  <button style={btnS('default')} onClick={() => setShowNewWf(false)}>Cancel</button>
-                  <button style={btnS('primary')} onClick={createWf}>Create Workflow</button>
-                </div>
-              </div>
-            )}
-
-            {loading ? <div className="empty-state"><div className="spinner" /></div> :
-            workflows.length === 0 ? (
-              <div className="empty-state"><p>No workflows yet. Create one to track certification steps.</p></div>
-            ) : (
-              workflows.map(wf => (
-                <WorkflowCard key={wf.id} workflow={wf} canEdit={canEdit} onRefresh={loadWf} onDelete={() => deleteWf(wf.id)} />
-              ))
-            )}
-          </>
+          <KanbanBoard key={currentWf.id} workflow={currentWf} canEdit={canEdit} onDelete={() => deleteWf(currentWf.id)} />
         )}
       </div>
     </div>
   );
 }
 
-function WorkflowCard({ workflow, canEdit, onDelete }) {
-  const [steps, setSteps] = useState(workflow.steps || []);
-  const [showAdd, setShowAdd] = useState(false);
-  const [stepForm, setStepForm] = useState({ title:'', description:'', assignee:'', due_date:'' });
-  const [collapsed, setCollapsed] = useState(false);
+/* ── Kanban Board ─────────────────────────────────────────────── */
+function KanbanBoard({ workflow, canEdit, onDelete }) {
+  const [cards,   setCards]   = useState(workflow.steps || []);
+  const [dragId,  setDragId]  = useState(null);
+  const [overCol, setOverCol] = useState(null);
+  const [detail,  setDetail]  = useState(null);
+  const [filterPri,      setFilterPri]      = useState('');
+  const [filterAssignee, setFilterAssignee] = useState('');
 
-  useEffect(() => setSteps(workflow.steps || []), [workflow.steps]);
+  const assignees = [...new Set(cards.map(c => c.assignee).filter(Boolean))];
+  const visible   = cards.filter(c =>
+    (!filterPri      || (c.priority || 'medium') === filterPri) &&
+    (!filterAssignee || c.assignee === filterAssignee)
+  );
+  const byCol = KANBAN_COLS.reduce((a, col) => { a[col.id] = visible.filter(c => c.status === col.id); return a; }, {});
+  const done  = cards.filter(c => c.status === 'completed').length;
+  const pct   = cards.length ? Math.round(100 * done / cards.length) : 0;
 
-  const completed = steps.filter(s => s.status === 'completed').length;
-  const pct = steps.length ? Math.round(100 * completed / steps.length) : 0;
-
-  const updateStep = async (id, field, value) => {
-    const s = steps.find(s => s.id === id);
-    const updated = { ...s, [field]: value };
-    await api.put(`/certifications/workflows/steps/${id}`, updated).catch(console.error);
-    setSteps(prev => prev.map(s => s.id === id ? { ...s, [field]: value } : s));
+  const onDragStart = (e, id) => { setDragId(id); e.dataTransfer.effectAllowed = 'move'; };
+  const onDragOver  = (e, colId) => { e.preventDefault(); setOverCol(colId); };
+  const onDragLeave = () => setOverCol(null);
+  const onDrop = async (e, colId) => {
+    e.preventDefault(); setOverCol(null);
+    if (!dragId || !canEdit) { setDragId(null); return; }
+    const card = cards.find(c => c.id === dragId); setDragId(null);
+    if (!card || card.status === colId) return;
+    const updated = { ...card, status: colId };
+    setCards(prev => prev.map(c => c.id === card.id ? updated : c));
+    await api.put(`/certifications/workflows/steps/${card.id}`, updated).catch(console.error);
   };
 
-  const addStep = async () => {
-    if (!stepForm.title.trim()) return;
-    const r = await api.post(`/certifications/workflows/${workflow.id}/steps`, stepForm).catch(console.error);
-    if (r?.data) { setSteps(prev => [...prev, r.data]); setStepForm({ title:'', description:'', assignee:'', due_date:'' }); setShowAdd(false); }
+  const addCard = async (colId, form) => {
+    const r = await api.post(`/certifications/workflows/${workflow.id}/steps`, { ...form, status: colId }).catch(console.error);
+    if (r?.data) setCards(prev => [...prev, r.data]);
   };
 
-  const deleteStep = async id => {
+  const updateCard = async (id, data) => {
+    const card = cards.find(c => c.id === id);
+    const merged = { ...card, ...data };
+    setCards(prev => prev.map(c => c.id === id ? merged : c));
+    if (detail?.id === id) setDetail(merged);
+    await api.put(`/certifications/workflows/steps/${id}`, merged).catch(console.error);
+  };
+
+  const deleteCard = async id => {
     await api.delete(`/certifications/workflows/steps/${id}`).catch(console.error);
-    setSteps(prev => prev.filter(s => s.id !== id));
+    setCards(prev => prev.filter(c => c.id !== id));
+    if (detail?.id === id) setDetail(null);
   };
-
-  const wfStatusColor = { active:'#10b981', completed:'#3b82f6', cancelled:'#9ca3af' };
 
   return (
-    <div style={{ background:'var(--surface2)', border:'1px solid var(--border1)', borderRadius:12, marginBottom:16, overflow:'hidden' }}>
-      {/* Workflow header */}
-      <div style={{ padding:'16px 20px', background:'var(--surface3)', display:'flex', alignItems:'center', gap:12 }}>
-        <div style={{ cursor:'pointer', fontSize:14, color:'var(--text3)' }} onClick={() => setCollapsed(c => !c)}>
-          {collapsed ? '▶' : '▼'}
-        </div>
+    <div>
+      {/* Board header */}
+      <div style={{ display:'flex', alignItems:'center', gap:14, marginBottom:14, flexWrap:'wrap' }}>
         <div style={{ flex:1 }}>
-          <div style={{ display:'flex', alignItems:'center', gap:10 }}>
-            <div style={{ fontSize:14, fontWeight:700, color:'var(--text1)' }}>{workflow.name}</div>
-            {badge(wfStatusColor[workflow.status]||'#6b7280', workflow.status)}
-          </div>
+          <div style={{ fontSize:17, fontWeight:700, color:'var(--text1)' }}>{workflow.name}</div>
           {workflow.description && <div style={{ fontSize:12, color:'var(--text3)', marginTop:2 }}>{workflow.description}</div>}
         </div>
-        <div style={{ textAlign:'right', minWidth:90 }}>
-          <div style={{ fontSize:18, fontWeight:700, color:pct===100?'#10b981':'var(--accent)' }}>{pct}%</div>
-          <div style={{ fontSize:11, color:'var(--text3)' }}>{completed}/{steps.length} done</div>
+        <div style={{ display:'flex', alignItems:'center', gap:8, minWidth:180 }}>
+          <div style={{ flex:1, height:6, borderRadius:3, background:'var(--border1)', overflow:'hidden' }}>
+            <div style={{ height:'100%', width:`${pct}%`, background:pct===100?'#10b981':'var(--accent)', transition:'width 0.4s' }} />
+          </div>
+          <span style={{ fontSize:13, fontWeight:700, color:pct===100?'#10b981':'var(--text2)', minWidth:38 }}>{pct}%</span>
+          <span style={{ fontSize:12, color:'var(--text3)', whiteSpace:'nowrap' }}>{done}/{cards.length}</span>
+        </div>
+        {canEdit && <button style={{ ...btnS('danger'), padding:'5px 12px', fontSize:12 }} onClick={onDelete}>Delete Board</button>}
+      </div>
+
+      {/* Filters */}
+      <div style={{ display:'flex', gap:8, marginBottom:14, flexWrap:'wrap', alignItems:'center' }}>
+        <select style={{ ...sel, width:'auto', fontSize:12, padding:'5px 10px' }} value={filterPri} onChange={e => setFilterPri(e.target.value)}>
+          <option value="">All Priorities</option>
+          {KANBAN_PRIORITIES.map(p => <option key={p.id} value={p.id}>{p.label}</option>)}
+        </select>
+        {assignees.length > 0 && (
+          <select style={{ ...sel, width:'auto', fontSize:12, padding:'5px 10px' }} value={filterAssignee} onChange={e => setFilterAssignee(e.target.value)}>
+            <option value="">All Assignees</option>
+            {assignees.map(a => <option key={a} value={a}>{a}</option>)}
+          </select>
+        )}
+        <span style={{ fontSize:12, color:'var(--text3)' }}>{visible.length} card{visible.length!==1?'s':''}</span>
+      </div>
+
+      {/* Columns */}
+      <div style={{ display:'flex', gap:12, overflowX:'auto', alignItems:'flex-start', paddingBottom:8 }}>
+        {KANBAN_COLS.map(col => (
+          <KanbanColumn key={col.id} col={col} cards={byCol[col.id]||[]} canEdit={canEdit}
+            isOver={overCol===col.id}
+            onDragOver={e => onDragOver(e, col.id)}
+            onDragLeave={onDragLeave}
+            onDrop={e => onDrop(e, col.id)}
+            onCardDragStart={onDragStart}
+            onCardClick={card => setDetail({ ...card })}
+            onAddCard={form => addCard(col.id, form)} />
+        ))}
+      </div>
+
+      {detail && (
+        <CardDetailModal card={detail} canEdit={canEdit}
+          onClose={() => setDetail(null)}
+          onUpdate={updateCard}
+          onDelete={deleteCard} />
+      )}
+    </div>
+  );
+}
+
+/* ── Kanban Column ────────────────────────────────────────────── */
+function KanbanColumn({ col, cards, canEdit, isOver, onDragOver, onDragLeave, onDrop, onCardDragStart, onCardClick, onAddCard }) {
+  const [showAdd, setShowAdd] = useState(false);
+  const [form, setForm] = useState({ title:'', assignee:'', priority:'medium', due_date:'' });
+
+  const submit = async () => {
+    if (!form.title.trim()) return;
+    await onAddCard(form);
+    setForm({ title:'', assignee:'', priority:'medium', due_date:'' });
+    setShowAdd(false);
+  };
+
+  return (
+    <div onDragOver={onDragOver} onDragLeave={onDragLeave} onDrop={onDrop}
+      style={{ minWidth:210, flex:'0 0 210px', borderRadius:10, overflow:'hidden',
+               background: isOver ? `${col.color}14` : 'var(--surface2)',
+               border:`1px solid ${isOver ? col.color : 'var(--border1)'}`,
+               transition:'border-color 0.15s, background 0.15s', display:'flex', flexDirection:'column' }}>
+
+      {/* Column header */}
+      <div style={{ padding:'10px 12px', borderBottom:'1px solid var(--border1)',
+                    display:'flex', alignItems:'center', justifyContent:'space-between',
+                    background:`${col.color}18` }}>
+        <div style={{ display:'flex', alignItems:'center', gap:7 }}>
+          <div style={{ width:9, height:9, borderRadius:'50%', background:col.color }} />
+          <span style={{ fontSize:12, fontWeight:700, color:col.color, textTransform:'uppercase', letterSpacing:'0.05em' }}>{col.label}</span>
+          <span style={{ background:'var(--surface3)', color:'var(--text3)', borderRadius:10, padding:'1px 7px', fontSize:11, fontWeight:600 }}>{cards.length}</span>
         </div>
         {canEdit && (
-          <button style={{ ...btnS('danger'), padding:'4px 10px', fontSize:12 }} onClick={onDelete}>Delete</button>
+          <button onClick={() => setShowAdd(s => !s)}
+            style={{ background:'none', border:'none', cursor:'pointer', color:col.color, fontSize:18, lineHeight:1, padding:'0 2px' }}>+</button>
         )}
       </div>
 
-      {/* Progress bar */}
-      <div style={{ height:4, background:'var(--border1)' }}>
-        <div style={{ height:'100%', width:`${pct}%`, background:pct===100?'#10b981':'var(--accent)', transition:'width 0.3s' }} />
+      {/* Cards */}
+      <div style={{ flex:1, padding:'8px 8px 4px', display:'flex', flexDirection:'column', gap:8, minHeight:120 }}>
+        {cards.map(card => (
+          <KanbanCard key={card.id} card={card} canEdit={canEdit} onDragStart={onCardDragStart} onClick={onCardClick} />
+        ))}
       </div>
 
-      {!collapsed && (
-        <div style={{ padding:20 }}>
-          {steps.length === 0 ? (
-            <div style={{ fontSize:13, color:'var(--text3)', textAlign:'center', padding:'16px 0' }}>No steps yet.</div>
-          ) : (
-            steps.map((s, i) => {
-              const sc = STEP_STATUSES.find(st => st.id === s.status) || STEP_STATUSES[0];
-              return (
-                <div key={s.id} style={{ display:'flex', alignItems:'flex-start', gap:12, marginBottom:12,
-                                          padding:'12px 14px', background:'var(--surface3)', borderRadius:8,
-                                          borderLeft:`3px solid ${sc.color}` }}>
-                  <div style={{ width:26, height:26, borderRadius:'50%', background:sc.color, color:'#fff',
-                                 display:'flex', alignItems:'center', justifyContent:'center', fontSize:12,
-                                 fontWeight:700, flexShrink:0, marginTop:1 }}>
-                    {i+1}
-                  </div>
-                  <div style={{ flex:1, minWidth:0 }}>
-                    <div style={{ fontSize:13, fontWeight:600, color:'var(--text1)', textDecoration: s.status==='completed'?'line-through':'none' }}>
-                      {s.title}
-                    </div>
-                    {s.description && <div style={{ fontSize:11, color:'var(--text3)', marginTop:2 }}>{s.description}</div>}
-                    <div style={{ display:'flex', gap:12, marginTop:6, fontSize:11, color:'var(--text3)' }}>
-                      {s.assignee && <span>👤 {s.assignee}</span>}
-                      {s.due_date && (
-                        <span style={{ color: isOverdue(s.due_date) && s.status !== 'completed' ? '#ef4444' : 'var(--text3)' }}>
-                          📅 {fmtD(s.due_date)}
-                        </span>
-                      )}
-                      {s.completed_at && <span style={{ color:'#10b981' }}>✅ {fmtDT(s.completed_at)}</span>}
-                    </div>
-                  </div>
-                  {canEdit && (
-                    <div style={{ display:'flex', gap:4, flexShrink:0 }}>
-                      <select style={{ ...sel, width:'auto', fontSize:11, padding:'3px 8px' }}
-                              value={s.status} onChange={e => updateStep(s.id, 'status', e.target.value)}>
-                        {STEP_STATUSES.map(st => <option key={st.id} value={st.id}>{st.label}</option>)}
-                      </select>
-                      <button style={{ ...btnS('sm'), color:'#ef4444', border:'1px solid #ef4444', padding:'3px 8px' }}
-                              onClick={() => deleteStep(s.id)}>✕</button>
-                    </div>
-                  )}
-                </div>
-              );
-            })
-          )}
-
-          {canEdit && (
-            showAdd ? (
-              <div style={{ padding:'12px 14px', background:'var(--surface3)', borderRadius:8, marginTop:8 }}>
-                <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10, marginBottom:10 }}>
-                  <input style={inp} placeholder="Step title *" value={stepForm.title} onChange={e => setStepForm(f=>({...f,title:e.target.value}))} />
-                  <input style={inp} placeholder="Assignee" value={stepForm.assignee} onChange={e => setStepForm(f=>({...f,assignee:e.target.value}))} />
-                  <input style={inp} placeholder="Description" value={stepForm.description} onChange={e => setStepForm(f=>({...f,description:e.target.value}))} />
-                  <input type="date" style={inp} value={stepForm.due_date} onChange={e => setStepForm(f=>({...f,due_date:e.target.value}))} />
-                </div>
-                <div style={{ display:'flex', gap:8, justifyContent:'flex-end' }}>
-                  <button style={btnS('default')} onClick={() => setShowAdd(false)}>Cancel</button>
-                  <button style={btnS('primary')} onClick={addStep}>Add Step</button>
-                </div>
-              </div>
-            ) : (
-              <button style={{ ...btnS('default'), marginTop:8, width:'100%', textAlign:'center' }}
-                      onClick={() => setShowAdd(true)}>+ Add Step</button>
-            )
-          )}
+      {/* Quick-add */}
+      {canEdit && showAdd && (
+        <div style={{ padding:'10px 10px 12px', borderTop:'1px solid var(--border1)', display:'flex', flexDirection:'column', gap:6 }}>
+          <input style={{ ...inp, fontSize:12, padding:'6px 8px' }} placeholder="Card title *"
+            value={form.title} onChange={e => setForm(f => ({...f, title:e.target.value}))}
+            onKeyDown={e => { if (e.key==='Enter') submit(); if (e.key==='Escape') setShowAdd(false); }}
+            autoFocus />
+          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:5 }}>
+            <input style={{ ...inp, fontSize:11, padding:'5px 7px' }} placeholder="Assignee"
+              value={form.assignee} onChange={e => setForm(f => ({...f, assignee:e.target.value}))} />
+            <select style={{ ...sel, fontSize:11, padding:'5px 7px' }} value={form.priority}
+              onChange={e => setForm(f => ({...f, priority:e.target.value}))}>
+              {KANBAN_PRIORITIES.map(p => <option key={p.id} value={p.id}>{p.label}</option>)}
+            </select>
+          </div>
+          <input type="date" style={{ ...inp, fontSize:11, padding:'5px 7px' }}
+            value={form.due_date} onChange={e => setForm(f => ({...f, due_date:e.target.value}))} />
+          <div style={{ display:'flex', gap:5 }}>
+            <button style={{ ...btnS('default'), flex:1, padding:'5px 0', fontSize:12 }} onClick={() => setShowAdd(false)}>Cancel</button>
+            <button style={{ ...btnS('primary'), flex:1, padding:'5px 0', fontSize:12 }} onClick={submit}>Add</button>
+          </div>
         </div>
       )}
+    </div>
+  );
+}
+
+/* ── Kanban Card ──────────────────────────────────────────────── */
+function KanbanCard({ card, canEdit, onDragStart, onClick }) {
+  const p       = kpri(card.priority || 'medium');
+  const overdue = card.due_date && new Date(card.due_date) < new Date() && card.status !== 'completed';
+
+  return (
+    <div draggable={canEdit} onDragStart={e => onDragStart(e, card.id)} onClick={() => onClick(card)}
+      style={{ background:'var(--surface3)', border:'1px solid var(--border1)', borderRadius:8,
+               padding:'10px 11px', cursor:canEdit?'grab':'pointer',
+               borderLeft:`3px solid ${p.color}`, transition:'box-shadow 0.15s',
+               userSelect:'none' }}
+      onMouseEnter={e => e.currentTarget.style.boxShadow='0 3px 12px rgba(0,0,0,0.25)'}
+      onMouseLeave={e => e.currentTarget.style.boxShadow='none'}>
+
+      {/* Priority + title */}
+      <div style={{ display:'flex', alignItems:'flex-start', gap:6, marginBottom:5 }}>
+        <span style={{ fontSize:10, fontWeight:700, color:p.color, background:`${p.color}20`,
+                       padding:'1px 6px', borderRadius:4, flexShrink:0, marginTop:1 }}>{p.label}</span>
+        <div style={{ fontSize:13, fontWeight:600, color:'var(--text1)', lineHeight:1.35,
+                      textDecoration: card.status==='completed' ? 'line-through' : 'none' }}>{card.title}</div>
+      </div>
+
+      {card.description && (
+        <div style={{ fontSize:11, color:'var(--text3)', marginBottom:6,
+                      display:'-webkit-box', WebkitLineClamp:2, WebkitBoxOrient:'vertical', overflow:'hidden' }}>
+          {card.description}
+        </div>
+      )}
+
+      {/* Meta */}
+      <div style={{ display:'flex', alignItems:'center', gap:8, flexWrap:'wrap', marginTop:4 }}>
+        {card.assignee && (
+          <div style={{ display:'flex', alignItems:'center', gap:4 }}>
+            <div style={{ width:18, height:18, borderRadius:'50%', background:'var(--accent)', color:'#fff',
+                          fontSize:10, fontWeight:700, display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
+              {card.assignee[0].toUpperCase()}
+            </div>
+            <span style={{ fontSize:11, color:'var(--text2)' }}>{card.assignee}</span>
+          </div>
+        )}
+        {card.due_date && (
+          <span style={{ fontSize:11, color:overdue?'#ef4444':'var(--text3)', fontWeight:overdue?600:400 }}>
+            📅 {fmtD(card.due_date)}
+          </span>
+        )}
+        {card.status === 'completed' && (
+          <span style={{ fontSize:10, color:'#10b981', fontWeight:600 }}>✓ Done</span>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/* ── Card Detail Modal ────────────────────────────────────────── */
+function CardDetailModal({ card, canEdit, onClose, onUpdate, onDelete }) {
+  const [form, setForm] = useState({
+    title:       card.title       || '',
+    description: card.description || '',
+    assignee:    card.assignee    || '',
+    priority:    card.priority    || 'medium',
+    due_date:    card.due_date?.slice(0,10) || '',
+    status:      card.status      || 'pending',
+    notes:       card.notes       || '',
+    step_number: card.step_number || 1,
+  });
+  const [saving, setSaving] = useState(false);
+  const p   = kpri(form.priority);
+  const col = KANBAN_COLS.find(c => c.id === form.status) || KANBAN_COLS[0];
+
+  const save = async () => {
+    if (!form.title.trim()) return;
+    setSaving(true);
+    await onUpdate(card.id, form);
+    setSaving(false);
+    onClose();
+  };
+
+  return (
+    <div className="modal-overlay" onClick={e => e.target===e.currentTarget && onClose()}>
+      <div className="modal" style={{ maxWidth:640, width:'96%' }}>
+        <div className="modal-header" style={{ borderLeft:`4px solid ${p.color}` }}>
+          <div>
+            <div style={{ fontSize:11, marginBottom:4, display:'flex', gap:8 }}>
+              <span style={{ color:p.color, fontWeight:700, fontSize:11, background:`${p.color}18`, padding:'2px 7px', borderRadius:4 }}>{p.label}</span>
+              <span style={{ color:col.color, fontWeight:600 }}>● {col.label}</span>
+            </div>
+            <h2>Card Detail</h2>
+          </div>
+          <button className="modal-close" onClick={onClose}>✕</button>
+        </div>
+        <div className="modal-body" style={{ display:'flex', flexDirection:'column', gap:14 }}>
+          <div className="form-group">
+            <label>Title</label>
+            <input value={form.title} onChange={e => setForm(f=>({...f,title:e.target.value}))} disabled={!canEdit} />
+          </div>
+          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12 }}>
+            <div className="form-group">
+              <label>Status</label>
+              <select value={form.status} onChange={e => setForm(f=>({...f,status:e.target.value}))} disabled={!canEdit}>
+                {KANBAN_COLS.map(c => <option key={c.id} value={c.id}>{c.label}</option>)}
+              </select>
+            </div>
+            <div className="form-group">
+              <label>Priority</label>
+              <select value={form.priority} onChange={e => setForm(f=>({...f,priority:e.target.value}))} disabled={!canEdit}>
+                {KANBAN_PRIORITIES.map(p => <option key={p.id} value={p.id}>{p.label}</option>)}
+              </select>
+            </div>
+            <div className="form-group">
+              <label>Assignee</label>
+              <input value={form.assignee} onChange={e => setForm(f=>({...f,assignee:e.target.value}))} disabled={!canEdit} placeholder="Name" />
+            </div>
+            <div className="form-group">
+              <label>Due Date</label>
+              <input type="date" value={form.due_date} onChange={e => setForm(f=>({...f,due_date:e.target.value}))} disabled={!canEdit} />
+            </div>
+          </div>
+          <div className="form-group">
+            <label>Description</label>
+            <textarea rows={3} value={form.description}
+              onChange={e => setForm(f=>({...f,description:e.target.value}))}
+              disabled={!canEdit} placeholder="Describe the task…" style={{ resize:'vertical' }} />
+          </div>
+          <div className="form-group">
+            <label>Notes / Comments</label>
+            <textarea rows={3} value={form.notes}
+              onChange={e => setForm(f=>({...f,notes:e.target.value}))}
+              disabled={!canEdit} placeholder="Add notes or comments…" style={{ resize:'vertical' }} />
+          </div>
+          {card.completed_at && (
+            <div style={{ fontSize:12, color:'#10b981', padding:'8px 12px', background:'#10b98118', borderRadius:6 }}>
+              ✅ Completed: {fmtDT(card.completed_at)}
+            </div>
+          )}
+        </div>
+        <div className="modal-footer">
+          {canEdit && (
+            <button className="btn btn-danger" style={{ marginRight:'auto' }}
+              onClick={() => { if (window.confirm('Delete this card?')) { onDelete(card.id); onClose(); } }}>
+              Delete Card
+            </button>
+          )}
+          <button className="btn btn-secondary" onClick={onClose}>Cancel</button>
+          {canEdit && (
+            <button className="btn btn-primary" onClick={save} disabled={saving || !form.title.trim()}>
+              {saving ? 'Saving…' : 'Save Changes'}
+            </button>
+          )}
+        </div>
+      </div>
     </div>
   );
 }
