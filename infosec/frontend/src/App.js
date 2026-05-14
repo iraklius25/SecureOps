@@ -490,8 +490,12 @@ function Sidebar() {
                          padding:'10px 16px 4px', cursor:'pointer', userSelect:'none' }}>
                 <span style={{ fontSize:10, fontWeight:700, color:'var(--text3)', textTransform:'uppercase',
                                letterSpacing:'0.08em' }}>{group.label}</span>
-                <span style={{ fontSize:10, color:'var(--text3)', transition:'transform 0.2s',
-                               transform: isCollapsed ? 'rotate(-90deg)' : 'rotate(0deg)' }}>▾</span>
+                <svg width="12" height="12" viewBox="0 0 12 12" fill="none"
+                  style={{ transition:'transform 0.2s', flexShrink:0,
+                           transform: isCollapsed ? 'rotate(-90deg)' : 'rotate(0deg)' }}>
+                  <path d="M3 4.5L6 7.5L9 4.5" stroke="var(--text3)" strokeWidth="1.5"
+                    strokeLinecap="round" strokeLinejoin="round"/>
+                </svg>
               </div>
               {!isCollapsed && visibleItems.map(n => (
                 <Link key={n.path} to={n.path}
