@@ -1,6 +1,10 @@
 /**
  * Notifier Service
- * Handles in-app notifications + Slack/Teams webhook alerts + email
+ * Handles in-app notifications + Slack/Teams webhook alerts + email.
+ *
+ * Pattern: email is always attempted first (notifyEmail has its own internal
+ * guard via email_on_* setting). In-app and webhook are gated separately by
+ * notify_on_* so the two channels are fully independent.
  */
 const db     = require('../db');
 const logger = require('./logger');
@@ -62,23 +66,15 @@ async function notifyWebhook({ title, message, type = 'info' }) {
 
     if (cfg.slack_webhook_url) {
       const body = JSON.stringify({
-        attachments: [{
-          color,
-          title,
-          text: message,
-          footer: 'SecureOps',
-          ts: Math.floor(Date.now() / 1000),
-        }],
+        attachments: [{ color, title, text: message, footer: 'SecureOps', ts: Math.floor(Date.now() / 1000) }],
       });
       await fetch(cfg.slack_webhook_url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body }).catch(() => {});
     }
 
     if (cfg.teams_webhook_url) {
       const body = JSON.stringify({
-        '@type': 'MessageCard',
-        '@context': 'http://schema.org/extensions',
-        themeColor: color.replace('#', ''),
-        summary: title,
+        '@type': 'MessageCard', '@context': 'http://schema.org/extensions',
+        themeColor: color.replace('#', ''), summary: title,
         sections: [{ activityTitle: `**${title}**`, activityText: message }],
       });
       await fetch(cfg.teams_webhook_url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body }).catch(() => {});
@@ -92,22 +88,22 @@ async function notifyWebhook({ title, message, type = 'info' }) {
 
 async function notifyVuln(vuln, assetIp) {
   try {
-    const r = await db.query(
-      `SELECT key, value FROM settings WHERE key IN ('notify_on_critical','notify_on_high')`
-    );
+    if (!['critical', 'high'].includes(vuln.severity)) return;
+    const title   = `${vuln.severity.toUpperCase()} Vulnerability: ${vuln.title}`;
+    const message = `Found on ${assetIp}${vuln.cve_id ? ` (${vuln.cve_id})` : ''}. ALE: $${Math.round(vuln.ale || 0).toLocaleString()}`;
+    const evType  = vuln.severity === 'critical' ? 'critical' : 'high';
+
+    // Email independent of in-app/webhook toggle
+    if (vuln.severity === 'critical') notifyEmail('email_on_critical', title, message, 'critical').catch(() => {});
+
+    // In-app + webhook gated by notify_on_critical / notify_on_high
+    const r = await db.query(`SELECT key, value FROM settings WHERE key IN ('notify_on_critical','notify_on_high')`);
     const cfg = Object.fromEntries(r.rows.map(row => [row.key, row.value]));
     if (vuln.severity === 'critical' && cfg.notify_on_critical !== 'true') return;
     if (vuln.severity === 'high'     && cfg.notify_on_high     !== 'true') return;
-    if (!['critical', 'high'].includes(vuln.severity)) return;
-
-    const title   = `${vuln.severity.toUpperCase()} Vulnerability: ${vuln.title}`;
-    const message = `Found on ${assetIp}${vuln.cve_id ? ` (${vuln.cve_id})` : ''}. ALE: $${Math.round(vuln.ale || 0).toLocaleString()}`;
-
-    const evType = vuln.severity === 'critical' ? 'critical' : 'high';
     await Promise.all([
       notifyInApp({ title, message, type: evType, resource: 'vulnerability', link: '/vulnerabilities' }),
       notifyWebhook({ title, message, type: evType }),
-      vuln.severity === 'critical' ? notifyEmail('email_on_critical', title, message, 'critical') : Promise.resolve(),
     ]);
   } catch (e) {
     logger.error('notifyVuln error:', e.message);
@@ -116,16 +112,16 @@ async function notifyVuln(vuln, assetIp) {
 
 async function notifyScanComplete(scanJob, stats) {
   try {
+    const title   = `Scan Completed: ${scanJob.name || scanJob.target}`;
+    const message = `Target: ${scanJob.target} · Assets found: ${stats.assetsFound} · Vulnerabilities: ${stats.vulnsFound}`;
+
+    notifyEmail('email_on_scan_complete', title, message, 'success').catch(() => {});
+
     const r = await db.query(`SELECT value FROM settings WHERE key='notify_on_scan_complete'`);
     if (r.rows[0]?.value !== 'true') return;
-
-    const title   = `Scan Completed: ${scanJob.name || scanJob.target}`;
-    const message = `Target: ${scanJob.target} | Assets found: ${stats.assetsFound} | Vulnerabilities: ${stats.vulnsFound}`;
-
     await Promise.all([
       notifyInApp({ title, message, type: 'success', resource: 'scan', link: '/scans' }),
       notifyWebhook({ title, message, type: 'success' }),
-      notifyEmail('email_on_scan_complete', title, message, 'success'),
     ]);
   } catch (e) {
     logger.error('notifyScanComplete error:', e.message);
@@ -135,8 +131,6 @@ async function notifyScanComplete(scanJob, stats) {
 // ── New-risk notification ─────────────────────────────────────
 async function notifyNewRisk(risk) {
   try {
-    const r = await db.query(`SELECT value FROM settings WHERE key='notify_on_new_risk'`);
-    if (r.rows[0]?.value !== 'true') return;
     const title   = `New Risk Registered: ${risk.title}`;
     const message = [
       `Level: ${(risk.risk_level || 'unknown').toUpperCase()} | Score: ${risk.risk_score || 0}`,
@@ -144,10 +138,14 @@ async function notifyNewRisk(risk) {
       `Treatment: ${risk.treatment || 'mitigate'}`,
     ].join(' · ');
     const type = risk.risk_level === 'critical' ? 'critical' : risk.risk_level === 'high' ? 'warning' : 'info';
+
+    notifyEmail('email_on_new_risk', title, message, type).catch(() => {});
+
+    const r = await db.query(`SELECT value FROM settings WHERE key='notify_on_new_risk'`);
+    if (r.rows[0]?.value !== 'true') return;
     await Promise.all([
       notifyInApp({ title, message, type, resource: 'risk', resource_id: risk.id, link: '/risks' }),
       notifyWebhook({ title, message, type }),
-      notifyEmail('email_on_new_risk', title, message, type),
     ]);
   } catch (e) { logger.error('notifyNewRisk error:', e.message); }
 }
@@ -155,8 +153,6 @@ async function notifyNewRisk(risk) {
 // ── Approval notification ─────────────────────────────────────
 async function notifyApproval(approval, vulnTitle, severity, requestedByName, verdict) {
   try {
-    const r = await db.query(`SELECT value FROM settings WHERE key='notify_on_approval'`);
-    if (r.rows[0]?.value !== 'true') return;
     const isNew  = !verdict;
     const title  = isNew
       ? `Approval Request: ${vulnTitle} — ${approval.action}`
@@ -169,10 +165,14 @@ async function notifyApproval(approval, vulnTitle, severity, requestedByName, ve
       approval.request_notes ? `Notes: ${approval.request_notes}` : null,
     ].filter(Boolean).join(' · ');
     const type = isNew ? 'warning' : (verdict === 'approved' ? 'success' : 'info');
+
+    notifyEmail('email_on_approval', title, message, type).catch(() => {});
+
+    const r = await db.query(`SELECT value FROM settings WHERE key='notify_on_approval'`);
+    if (r.rows[0]?.value !== 'true') return;
     await Promise.all([
       notifyInApp({ title, message, type, resource: 'approval', resource_id: approval.id, link: '/approvals' }),
       notifyWebhook({ title, message, type }),
-      notifyEmail('email_on_approval', title, message, type),
     ]);
   } catch (e) { logger.error('notifyApproval error:', e.message); }
 }
@@ -180,14 +180,16 @@ async function notifyApproval(approval, vulnTitle, severity, requestedByName, ve
 // ── GRC Hub activity notification ─────────────────────────────
 async function notifyGrcActivity(entityType, entityName, action, detail) {
   try {
-    const r = await db.query(`SELECT value FROM settings WHERE key='notify_on_grc_activity'`);
-    if (r.rows[0]?.value !== 'true') return;
     const title   = `GRC Hub: ${entityType} ${action} — ${entityName}`;
     const message = detail || `${entityType} "${entityName}" was ${action} in the GRC Hub.`;
+
+    notifyEmail('email_on_grc_activity', title, message, 'info').catch(() => {});
+
+    const r = await db.query(`SELECT value FROM settings WHERE key='notify_on_grc_activity'`);
+    if (r.rows[0]?.value !== 'true') return;
     await Promise.all([
       notifyInApp({ title, message, type: 'info', resource: 'grc', link: '/grc' }),
       notifyWebhook({ title, message, type: 'info' }),
-      notifyEmail('email_on_grc_activity', title, message, 'info'),
     ]);
   } catch (e) { logger.error('notifyGrcActivity error:', e.message); }
 }
@@ -195,8 +197,6 @@ async function notifyGrcActivity(entityType, entityName, action, detail) {
 // ── Certification Tracker change notification ──────────────────
 async function notifyCertChange(cert, changeType, extraDetail) {
   try {
-    const r = await db.query(`SELECT value FROM settings WHERE key='notify_on_cert_change'`);
-    if (r.rows[0]?.value !== 'true') return;
     const title   = `Certification Update: ${cert.name} (${cert.framework})`;
     const message = [
       `Change: ${changeType}`,
@@ -204,10 +204,14 @@ async function notifyCertChange(cert, changeType, extraDetail) {
       cert.phase    ? `Phase: ${cert.phase}`            : null,
       extraDetail   || null,
     ].filter(Boolean).join(' · ');
+
+    notifyEmail('email_on_cert_change', title, message, 'info').catch(() => {});
+
+    const r = await db.query(`SELECT value FROM settings WHERE key='notify_on_cert_change'`);
+    if (r.rows[0]?.value !== 'true') return;
     await Promise.all([
       notifyInApp({ title, message, type: 'info', resource: 'certification', resource_id: cert.id, link: '/certifications' }),
       notifyWebhook({ title, message, type: 'info' }),
-      notifyEmail('email_on_cert_change', title, message, 'info'),
     ]);
   } catch (e) { logger.error('notifyCertChange error:', e.message); }
 }
@@ -215,8 +219,6 @@ async function notifyCertChange(cert, changeType, extraDetail) {
 // ── KPI / KRI metric change notification ─────────────────────
 async function notifyKpiChange(metricName, oldRag, newRag, detail) {
   try {
-    const r = await db.query(`SELECT value FROM settings WHERE key='notify_on_kpi_change'`);
-    if (r.rows[0]?.value !== 'true') return;
     if (!oldRag || !newRag || oldRag === newRag) return;
     const ragOrder = ['green', 'amber', 'red'];
     const worsened = ragOrder.indexOf(newRag) > ragOrder.indexOf(oldRag);
@@ -228,10 +230,14 @@ async function notifyKpiChange(metricName, oldRag, newRag, detail) {
       detail || null,
     ].filter(Boolean).join(' · ');
     const type = worsened ? (newRag === 'red' ? 'critical' : 'warning') : 'success';
+
+    notifyEmail('email_on_kpi_change', title, message, type).catch(() => {});
+
+    const r = await db.query(`SELECT value FROM settings WHERE key='notify_on_kpi_change'`);
+    if (r.rows[0]?.value !== 'true') return;
     await Promise.all([
       notifyInApp({ title, message, type, resource: 'metric', link: '/metrics' }),
       notifyWebhook({ title, message, type }),
-      notifyEmail('email_on_kpi_change', title, message, type),
     ]);
   } catch (e) { logger.error('notifyKpiChange error:', e.message); }
 }
@@ -239,21 +245,23 @@ async function notifyKpiChange(metricName, oldRag, newRag, detail) {
 // ── New asset registered notification ────────────────────────
 async function notifyNewAsset(asset) {
   try {
-    const r = await db.query(`SELECT value FROM settings WHERE key='notify_on_new_asset'`);
-    if (r.rows[0]?.value !== 'true') return;
     const identifier = asset.hostname || asset.ip_address || asset.id;
     const title   = `New Asset Registered: ${identifier}`;
     const message = [
-      asset.ip_address    ? `IP: ${asset.ip_address}`                    : null,
-      asset.hostname      ? `Hostname: ${asset.hostname}`                : null,
+      asset.ip_address ? `IP: ${asset.ip_address}`                         : null,
+      asset.hostname   ? `Hostname: ${asset.hostname}`                     : null,
       `Classification: ${(asset.classification || 'internal').toUpperCase()}`,
       `Category: ${asset.asset_category || 'hardware'}`,
-      asset.owner         ? `Owner: ${asset.owner}`                      : null,
+      asset.owner      ? `Owner: ${asset.owner}`                           : null,
     ].filter(Boolean).join(' · ');
+
+    notifyEmail('email_on_new_asset', title, message, 'info').catch(() => {});
+
+    const r = await db.query(`SELECT value FROM settings WHERE key='notify_on_new_asset'`);
+    if (r.rows[0]?.value !== 'true') return;
     await Promise.all([
       notifyInApp({ title, message, type: 'info', resource: 'asset', resource_id: asset.id, link: '/assets' }),
       notifyWebhook({ title, message, type: 'info' }),
-      notifyEmail('email_on_new_asset', title, message, 'info'),
     ]);
   } catch (e) { logger.error('notifyNewAsset error:', e.message); }
 }
@@ -261,33 +269,27 @@ async function notifyNewAsset(asset) {
 // ── Daily overdue reviews/tasks notification ──────────────────
 async function notifyOverdue() {
   try {
-    const r = await db.query(`SELECT value FROM settings WHERE key='notify_on_overdue'`);
-    if (r.rows[0]?.value !== 'true') return;
-
     const [assetReviews, riskReviews] = await Promise.all([
-      db.query(`SELECT COUNT(*) FROM assets
-                WHERE review_date < NOW() AND review_date IS NOT NULL
-                  AND status != 'decommissioned'`),
-      db.query(`SELECT COUNT(*) FROM risks
-                WHERE review_date < NOW() AND review_date IS NOT NULL
-                  AND status = 'open'`),
+      db.query(`SELECT COUNT(*) FROM assets WHERE review_date < NOW() AND review_date IS NOT NULL AND status != 'decommissioned'`),
+      db.query(`SELECT COUNT(*) FROM risks  WHERE review_date < NOW() AND review_date IS NOT NULL AND status = 'open'`),
     ]);
-
     const overdueAssets = parseInt(assetReviews.rows[0].count);
     const overdueRisks  = parseInt(riskReviews.rows[0].count);
-
     if (overdueAssets === 0 && overdueRisks === 0) return;
 
     const parts = [];
     if (overdueAssets > 0) parts.push(`${overdueAssets} asset review(s) overdue`);
     if (overdueRisks  > 0) parts.push(`${overdueRisks} risk review(s) overdue`);
-
     const title   = 'Daily Overdue Review Alert';
     const message = parts.join(' · ') + ' — immediate attention required.';
+
+    notifyEmail('email_on_overdue', title, message, 'warning').catch(() => {});
+
+    const r = await db.query(`SELECT value FROM settings WHERE key='notify_on_overdue'`);
+    if (r.rows[0]?.value !== 'true') return;
     await Promise.all([
       notifyInApp({ title, message, type: 'warning', resource: 'asset', link: '/assets' }),
       notifyWebhook({ title, message, type: 'warning' }),
-      notifyEmail('email_on_overdue', title, message, 'warning'),
     ]);
   } catch (e) { logger.error('notifyOverdue error:', e.message); }
 }
@@ -295,17 +297,19 @@ async function notifyOverdue() {
 // ── Risk deleted notification ─────────────────────────────────
 async function notifyRiskDelete(risk, deletedBy) {
   try {
-    const r = await db.query(`SELECT value FROM settings WHERE key='notify_on_risk_delete'`);
-    if (r.rows[0]?.value !== 'true') return;
     const title   = `Risk Deleted: ${risk.title}`;
     const message = [
       `Level: ${(risk.risk_level || 'unknown').toUpperCase()} | Score: ${risk.risk_score || 0}`,
       `Deleted by: ${deletedBy || 'unknown'}`,
     ].join(' · ');
+
+    notifyEmail('email_on_risk_delete', title, message, 'warning').catch(() => {});
+
+    const r = await db.query(`SELECT value FROM settings WHERE key='notify_on_risk_delete'`);
+    if (r.rows[0]?.value !== 'true') return;
     await Promise.all([
       notifyInApp({ title, message, type: 'warning', resource: 'risk', link: '/risks' }),
       notifyWebhook({ title, message, type: 'warning' }),
-      notifyEmail('email_on_risk_delete', title, message, 'warning'),
     ]);
   } catch (e) { logger.error('notifyRiskDelete error:', e.message); }
 }

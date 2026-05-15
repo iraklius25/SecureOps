@@ -82,6 +82,7 @@ router.post('/programs', auth, requireRole('admin', 'analyst'), async (req, res)
 router.put('/programs/:id', auth, requireRole('admin', 'analyst'), async (req, res) => {
   const { name, description, phase, owner, target_date, completion_pct, status } = req.body;
   try {
+    const prev = await db.query('SELECT status, phase FROM grc_programs WHERE id=$1', [req.params.id]);
     const r = await db.query(
       `UPDATE grc_programs SET name=$1, description=$2, phase=$3, owner=$4, target_date=$5,
        completion_pct=$6, status=$7, updated_at=NOW() WHERE id=$8 RETURNING *`,
@@ -89,7 +90,19 @@ router.put('/programs/:id', auth, requireRole('admin', 'analyst'), async (req, r
        completion_pct || 0, status, req.params.id]
     );
     if (!r.rows.length) return res.status(404).json({ error: 'Not found' });
-    res.json(r.rows[0]);
+    const prog = r.rows[0];
+    const old  = prev.rows[0];
+    const changes = [];
+    if (old?.status !== prog.status) changes.push(`Status: ${old?.status} → ${prog.status}`);
+    if (old?.phase  !== prog.phase)  changes.push(`Phase: ${old?.phase} → ${prog.phase}`);
+    notifier.notifyGrcActivity('GRC Program', prog.name,
+      changes.length ? 'updated' : 'updated',
+      [
+        changes.length ? changes.join(' | ') : null,
+        `Framework: ${prog.framework} | Owner: ${prog.owner || 'N/A'} | Completion: ${prog.completion_pct}%`,
+      ].filter(Boolean).join(' · ')
+    ).catch(() => {});
+    res.json(prog);
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
@@ -148,6 +161,7 @@ router.put('/tasks/:id', auth, requireRole('admin', 'analyst'), async (req, res)
           nc_type, source, root_cause, containment_action, corrective_action,
           verification_evidence, verification_date, verified_by, recurrence_check_date } = req.body;
   try {
+    const prev = await db.query('SELECT status FROM grc_tasks WHERE id=$1', [req.params.id]);
     const r = await db.query(
       `UPDATE grc_tasks SET title=$1, description=$2, owner=$3, due_date=$4, priority=$5,
        status=$6, framework=$7, clause_ref=$8,
@@ -162,7 +176,15 @@ router.put('/tasks/:id', auth, requireRole('admin', 'analyst'), async (req, res)
        verified_by || null, recurrence_check_date || null, req.params.id]
     );
     if (!r.rows.length) return res.status(404).json({ error: 'Not found' });
-    res.json(r.rows[0]);
+    const task = r.rows[0];
+    const statusChanged = prev.rows[0]?.status !== task.status;
+    notifier.notifyGrcActivity('GRC Task', task.title, 'updated',
+      [
+        statusChanged ? `Status: ${prev.rows[0]?.status} → ${task.status}` : `Status: ${task.status}`,
+        `Priority: ${task.priority} | Owner: ${task.owner || 'N/A'}`,
+      ].join(' · ')
+    ).catch(() => {});
+    res.json(task);
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
