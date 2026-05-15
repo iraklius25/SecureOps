@@ -6,8 +6,11 @@ async function getSmtpConfig() {
   try {
     const r = await db.query(
       `SELECT key, value FROM settings WHERE key IN
-        ('smtp_host','smtp_port','smtp_user','smtp_password','smtp_from','smtp_enabled',
-         'email_on_assign','email_on_critical','email_on_overdue')`
+        ('smtp_host','smtp_port','smtp_user','smtp_password','smtp_from','smtp_to','smtp_enabled',
+         'email_on_assign','email_on_critical','email_on_overdue',
+         'email_on_new_risk','email_on_risk_delete','email_on_new_asset',
+         'email_on_approval','email_on_grc_activity','email_on_cert_change',
+         'email_on_kpi_change','email_on_scan_complete')`
     );
     return Object.fromEntries(r.rows.map(x => [x.key, x.value]));
   } catch (e) {

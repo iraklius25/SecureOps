@@ -81,8 +81,31 @@ router.patch('/', auth, requireRole('admin'), async (req, res) => {
 
 // POST /api/settings/test-webhook  — send a test notification
 router.post('/test-webhook', auth, requireRole('admin'), async (req, res) => {
-  const { type } = req.body; // 'slack' or 'teams'
+  const { type, to } = req.body; // type: 'slack' | 'teams' | 'email'
   try {
+    // ── Email test ──────────────────────────────────────────────
+    if (type === 'email') {
+      const mailer = require('../services/mailer');
+      const cfgRows = await db.query(
+        `SELECT key, value FROM settings WHERE key IN ('smtp_host','smtp_port','smtp_user','smtp_password','smtp_from','smtp_to','smtp_enabled')`
+      );
+      const cfg = Object.fromEntries(cfgRows.rows.map(r => [r.key, r.value]));
+      if (!cfg.smtp_host) return res.status(400).json({ error: 'SMTP host not configured' });
+      const recipient = to || cfg.smtp_to;
+      if (!recipient) return res.status(400).json({ error: 'No recipient configured — set "Send email to" in SMTP settings' });
+      await mailer.sendMail({
+        to: recipient,
+        subject: '[SecureOps] Test Email',
+        html: `<div style="font-family:sans-serif;max-width:600px">
+          <h2 style="color:#3fb950">SecureOps — Test Email</h2>
+          <p>Your SMTP configuration is working correctly.</p>
+          <p style="color:#666;font-size:12px">Sent at ${new Date().toLocaleString()} by ${req.user?.username || 'admin'}.</p>
+        </div>`,
+      });
+      return res.json({ ok: true, message: `Test email sent to ${recipient}` });
+    }
+
+    // ── Webhook test (Slack / Teams) ────────────────────────────
     const r    = await db.query('SELECT key, value FROM settings WHERE key IN ($1)', [type === 'slack' ? 'slack_webhook_url' : 'teams_webhook_url']);
     const url  = r.rows[0]?.value;
     if (!url) return res.status(400).json({ error: 'Webhook URL not configured' });

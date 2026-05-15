@@ -66,14 +66,21 @@ function ScheduledReportModal({ onClose, onSaved }) {
 
 /* ─── Email Tab ──────────────────────────────────── */
 function EmailTab({ form, setForm, save, saved, testing, testWebhook, testMsg }) {
-  const [testEmail, setTestEmail] = useState('');
+  const handleTestEmail = () => testWebhook('email', form.smtp_to || '');
 
-  const handleTestEmail = async () => {
-    const to = window.prompt('Enter email address to send test to:');
-    if (!to) return;
-    setTestEmail(to);
-    await testWebhook('email', to);
-  };
+  const EMAIL_TRIGGERS = [
+    { key: 'email_on_new_risk',      label: 'New Risk Registered',           desc: 'Send email when a new risk is added to the register' },
+    { key: 'email_on_risk_delete',   label: 'Risk Deleted',                  desc: 'Send email when a registered risk is permanently deleted' },
+    { key: 'email_on_critical',      label: 'Critical Vulnerability',        desc: 'Send email when a critical-severity vulnerability is discovered' },
+    { key: 'email_on_assign',        label: 'Vulnerability Assigned',        desc: 'Send email to the assignee when a vulnerability is assigned to them' },
+    { key: 'email_on_overdue',       label: 'Overdue Reviews / SLA Breach',  desc: 'Daily digest of overdue asset reviews and open risks past their due date' },
+    { key: 'email_on_scan_complete', label: 'Scan Completed',                desc: 'Send email when a network scan finishes' },
+    { key: 'email_on_new_asset',     label: 'New Asset Registered',          desc: 'Send email when a new asset is added to the inventory' },
+    { key: 'email_on_approval',      label: 'Approval Required / Decision',  desc: 'Send email when an approval is requested or a decision is made' },
+    { key: 'email_on_grc_activity',  label: 'GRC Hub Activity',              desc: 'Send email on GRC program, task, or document changes' },
+    { key: 'email_on_cert_change',   label: 'Certification Tracker Change',  desc: 'Send email when a certification phase or status changes' },
+    { key: 'email_on_kpi_change',    label: 'KPI / KRI Status Change',       desc: 'Send email when a metric RAG status changes' },
+  ];
 
   return (
     <div className="card">
@@ -128,17 +135,28 @@ function EmailTab({ form, setForm, save, saved, testing, testWebhook, testMsg })
         </div>
       </div>
 
-      <div className="form-group">
-        <label>From Address</label>
-        <input
-          value={form.smtp_from || ''}
-          onChange={e => setForm(p => ({ ...p, smtp_from: e.target.value }))}
-          placeholder="SecureOps <noreply@yourdomain.com>"
-        />
+      <div className="form-row">
+        <div className="form-group">
+          <label>From Address</label>
+          <input
+            value={form.smtp_from || ''}
+            onChange={e => setForm(p => ({ ...p, smtp_from: e.target.value }))}
+            placeholder="SecureOps <noreply@yourdomain.com>"
+          />
+        </div>
+        <div className="form-group">
+          <label>Send email to:</label>
+          <input
+            type="email"
+            value={form.smtp_to || ''}
+            onChange={e => setForm(p => ({ ...p, smtp_to: e.target.value }))}
+            placeholder="admin@yourdomain.com"
+          />
+        </div>
       </div>
 
       <div style={{ borderTop: '1px solid var(--border)', paddingTop: 20, marginTop: 4 }}>
-        <div className="card-title" style={{ marginBottom: 14 }}>Email Notifications</div>
+        <div className="card-title" style={{ marginBottom: 14 }}>Email Notification Triggers</div>
 
         <label style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16, cursor: 'pointer' }}>
           <input
@@ -148,16 +166,12 @@ function EmailTab({ form, setForm, save, saved, testing, testWebhook, testMsg })
           />
           <div>
             <div style={{ fontWeight: 500 }}>Enable Email Notifications</div>
-            <div style={{ fontSize: 12, color: 'var(--text3)' }}>Send automated emails via configured SMTP</div>
+            <div style={{ fontSize: 12, color: 'var(--text3)' }}>Send automated emails via the SMTP settings above</div>
           </div>
         </label>
 
-        {[
-          { key: 'email_on_assign',   label: 'Email on Assignment',    desc: 'Notify user when a vulnerability is assigned to them' },
-          { key: 'email_on_critical', label: 'Email on Critical Vuln', desc: 'Notify admins when a critical vulnerability is discovered' },
-          { key: 'email_on_overdue',  label: 'Email on SLA Breach',    desc: 'Notify when vulnerabilities pass their SLA due date' },
-        ].map(({ key, label, desc }) => (
-          <label key={key} style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 14, cursor: 'pointer' }}>
+        {EMAIL_TRIGGERS.map(({ key, label, desc }) => (
+          <label key={key} style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 14, cursor: form.smtp_enabled === 'true' ? 'pointer' : 'default', opacity: form.smtp_enabled === 'true' ? 1 : 0.5 }}>
             <input
               type="checkbox"
               checked={form[key] === 'true'}
@@ -173,7 +187,12 @@ function EmailTab({ form, setForm, save, saved, testing, testWebhook, testMsg })
       </div>
 
       <div className="modal-footer" style={{ paddingLeft: 0, paddingRight: 0, marginTop: 8 }}>
-        <button className="btn btn-secondary" onClick={handleTestEmail} disabled={testing === 'email' || !form.smtp_host}>
+        <button
+          className="btn btn-secondary"
+          onClick={handleTestEmail}
+          disabled={testing === 'email' || !form.smtp_host || !form.smtp_to}
+          title={!form.smtp_to ? 'Set "Send email to" before testing' : ''}
+        >
           {testing === 'email' ? 'Sending...' : 'Send Test Email'}
         </button>
         <button className="btn btn-primary" onClick={save}>Save Settings</button>
