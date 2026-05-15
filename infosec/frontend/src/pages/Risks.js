@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useContext } from 'react';
+import React, { useState, useEffect, useCallback, useContext, useRef } from 'react';
 import { api, AuthContext } from '../App';
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid,
@@ -32,6 +32,8 @@ function scoreColor(s) {
 
 /* ─── Risk Detail Modal (tabbed: Details / Controls / History) ── */
 function RiskDetailModal({ risk: initialRisk, initialTab = 'details', onClose, onSaved, appetite }) {
+  const overlayRef     = useRef(null);
+  const mouseDownOnBg  = useRef(false);
   const [tab,     setTab]     = useState(initialTab);
   const [risk,    setRisk]    = useState(initialRisk);
   const [editMode, setEditMode] = useState(false);
@@ -121,8 +123,8 @@ function RiskDetailModal({ risk: initialRisk, initialTab = 'details', onClose, o
         title:         form.title,
         description:   form.description,
         category:      form.category,
-        likelihood:    parseInt(form.likelihood),
-        impact:        parseInt(form.impact),
+        likelihood:    Math.min(5, Math.max(1, parseInt(form.likelihood) || 1)),
+        impact:        Math.min(5, Math.max(1, parseInt(form.impact)     || 1)),
         treatment:     form.treatment,
         status:        form.status,
         owner:         form.owner,
@@ -190,7 +192,12 @@ function RiskDetailModal({ risk: initialRisk, initialTab = 'details', onClose, o
   ];
 
   return (
-    <div className="modal-overlay" onClick={e => e.target === e.currentTarget && onClose()}>
+    <div
+      ref={overlayRef}
+      className="modal-overlay"
+      onMouseDown={e => { mouseDownOnBg.current = e.target === overlayRef.current; }}
+      onClick={e => { if (mouseDownOnBg.current && e.target === overlayRef.current) onClose(); }}
+    >
       <div className="modal" style={{ maxWidth: 720, display: 'flex', flexDirection: 'column', maxHeight: '92vh' }}>
 
         {/* Header */}
@@ -272,11 +279,29 @@ function RiskDetailModal({ risk: initialRisk, initialTab = 'details', onClose, o
                   <div className="form-row" style={{ marginBottom: 10 }}>
                     <div className="form-group">
                       <label>Likelihood (1–5)</label>
-                      <input type="number" min="1" max="5" value={form.likelihood || 1} onChange={e => setForm(p => ({ ...p, likelihood: e.target.value }))} />
+                      <input
+                        type="number" min="1" max="5"
+                        value={form.likelihood ?? 1}
+                        onClick={e => e.stopPropagation()}
+                        onMouseDown={e => e.stopPropagation()}
+                        onChange={e => {
+                          const v = Math.min(5, Math.max(1, parseInt(e.target.value) || 1));
+                          setForm(p => ({ ...p, likelihood: v }));
+                        }}
+                      />
                     </div>
                     <div className="form-group">
                       <label>Impact (1–5)</label>
-                      <input type="number" min="1" max="5" value={form.impact || 1} onChange={e => setForm(p => ({ ...p, impact: e.target.value }))} />
+                      <input
+                        type="number" min="1" max="5"
+                        value={form.impact ?? 1}
+                        onClick={e => e.stopPropagation()}
+                        onMouseDown={e => e.stopPropagation()}
+                        onChange={e => {
+                          const v = Math.min(5, Math.max(1, parseInt(e.target.value) || 1));
+                          setForm(p => ({ ...p, impact: v }));
+                        }}
+                      />
                     </div>
                   </div>
                   <div style={{ background: previewScore >= 20 ? '#ef444418' : previewScore >= 12 ? '#f9731618' : previewScore >= 6 ? '#eab30818' : '#22c55e18',
@@ -1012,21 +1037,41 @@ export function Risks() {
                         )}
                       </td>
                       <td className="text-muted">{r.category || '—'}</td>
-                      <td onClick={e => e.stopPropagation()}>
-                        <input type="number" min="1" max="5" value={r.likelihood}
-                          onChange={e => { const v = Math.min(5, Math.max(1, parseInt(e.target.value) || 1)); update(r.id, { likelihood: v }); }}
+                      <td onClick={e => e.stopPropagation()} onMouseDown={e => e.stopPropagation()}>
+                        <input
+                          key={`l-${r.id}-${r.likelihood}`}
+                          type="number" min="1" max="5"
+                          defaultValue={r.likelihood}
+                          onBlur={e => {
+                            const v = Math.min(5, Math.max(1, parseInt(e.target.value) || 1));
+                            e.target.value = v;
+                            if (v !== r.likelihood) update(r.id, { likelihood: v });
+                          }}
+                          onClick={e => e.stopPropagation()}
+                          onMouseDown={e => e.stopPropagation()}
                           disabled={!canEdit}
-                          style={{ width: 40, textAlign: 'center', fontFamily: 'monospace', fontSize: 12,
+                          style={{ width: 44, textAlign: 'center', fontFamily: 'monospace', fontSize: 12,
                                    background: 'var(--bg3)', border: '1px solid var(--border)',
-                                   borderRadius: 4, padding: '2px 4px', color: 'var(--text1)' }} />
+                                   borderRadius: 4, padding: '2px 4px', color: 'var(--text1)',
+                                   cursor: canEdit ? 'text' : 'default' }} />
                       </td>
-                      <td onClick={e => e.stopPropagation()}>
-                        <input type="number" min="1" max="5" value={r.impact}
-                          onChange={e => { const v = Math.min(5, Math.max(1, parseInt(e.target.value) || 1)); update(r.id, { impact: v }); }}
+                      <td onClick={e => e.stopPropagation()} onMouseDown={e => e.stopPropagation()}>
+                        <input
+                          key={`i-${r.id}-${r.impact}`}
+                          type="number" min="1" max="5"
+                          defaultValue={r.impact}
+                          onBlur={e => {
+                            const v = Math.min(5, Math.max(1, parseInt(e.target.value) || 1));
+                            e.target.value = v;
+                            if (v !== r.impact) update(r.id, { impact: v });
+                          }}
+                          onClick={e => e.stopPropagation()}
+                          onMouseDown={e => e.stopPropagation()}
                           disabled={!canEdit}
-                          style={{ width: 40, textAlign: 'center', fontFamily: 'monospace', fontSize: 12,
+                          style={{ width: 44, textAlign: 'center', fontFamily: 'monospace', fontSize: 12,
                                    background: 'var(--bg3)', border: '1px solid var(--border)',
-                                   borderRadius: 4, padding: '2px 4px', color: 'var(--text1)' }} />
+                                   borderRadius: 4, padding: '2px 4px', color: 'var(--text1)',
+                                   cursor: canEdit ? 'text' : 'default' }} />
                       </td>
                       <td><span className={`badge badge-${r.risk_level}`}>{r.risk_level}</span></td>
                       <td>
