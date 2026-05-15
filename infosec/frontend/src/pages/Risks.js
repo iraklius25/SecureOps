@@ -31,7 +31,7 @@ function scoreColor(s) {
 }
 
 /* ─── Risk Detail Modal (tabbed: Details / Controls / History) ── */
-function RiskDetailModal({ risk: initialRisk, initialTab = 'details', onClose, onSaved }) {
+function RiskDetailModal({ risk: initialRisk, initialTab = 'details', onClose, onSaved, appetite }) {
   const [tab,     setTab]     = useState(initialTab);
   const [risk,    setRisk]    = useState(initialRisk);
   const [editMode, setEditMode] = useState(false);
@@ -57,6 +57,23 @@ function RiskDetailModal({ risk: initialRisk, initialTab = 'details', onClose, o
   const [histLoaded, setHistLoaded] = useState(false);
 
   const AI_COLORS = { unacceptable:'#ef4444', high:'#f97316', limited:'#f59e0b', minimal:'#10b981' };
+
+  // Live preview values — update in real-time while editing L/I
+  const previewScore = editMode ? (parseInt(form.likelihood) || 1) * (parseInt(form.impact) || 1) : risk.risk_score;
+  const previewLevel = previewScore >= 20 ? 'critical' : previewScore >= 12 ? 'high' : previewScore >= 6 ? 'medium' : 'low';
+  const displayScore = editMode ? previewScore : risk.risk_score;
+  const displayLevel = editMode ? previewLevel : risk.risk_level;
+
+  const appetiteStatus = score => {
+    if (!appetite || score == null) return null;
+    const ap  = appetite.max_risk_score  ?? 12;
+    const tol = appetite.tolerance_score ?? 15;
+    if (score <= ap)  return { label: 'Within Appetite',  color: '#10b981', bg: '#10b98120' };
+    if (score <= tol) return { label: 'Within Tolerance', color: '#f59e0b', bg: '#f59e0b20' };
+    return              { label: 'Exceeds Tolerance',  color: '#ef4444', bg: '#ef444420' };
+  };
+  const apStatus = appetiteStatus(displayScore);
+
   const sc = scoreColor(risk.risk_score);
 
   const Field = ({ label, value, mono }) => !value && value !== 0 ? null : (
@@ -180,9 +197,18 @@ function RiskDetailModal({ risk: initialRisk, initialTab = 'details', onClose, o
         <div className="modal-header" style={{ flexShrink: 0 }}>
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', marginBottom: 6 }}>
-              <div className={`risk-score ${risk.risk_score >= 20 ? 'risk-critical' : risk.risk_score >= 12 ? 'risk-high' : risk.risk_score >= 6 ? 'risk-medium' : 'risk-low'}`}>{risk.risk_score}</div>
-              <span className={`badge badge-${risk.risk_level}`}>{risk.risk_level}</span>
-              <span style={{ fontSize: 12, color: 'var(--text3)' }}>L{risk.likelihood} × I{risk.impact}</span>
+              <div className={`risk-score ${displayScore >= 20 ? 'risk-critical' : displayScore >= 12 ? 'risk-high' : displayScore >= 6 ? 'risk-medium' : 'risk-low'}`}
+                style={{ transition: 'background 0.2s' }}>{displayScore}</div>
+              <span className={`badge badge-${displayLevel}`} style={{ transition: 'background 0.2s' }}>{displayLevel}</span>
+              <span style={{ fontSize: 12, color: 'var(--text3)' }}>
+                L{editMode ? (form.likelihood || 1) : risk.likelihood} × I{editMode ? (form.impact || 1) : risk.impact}
+              </span>
+              {apStatus && (
+                <span style={{ fontSize: 11, fontWeight: 600, padding: '2px 8px', borderRadius: 10,
+                               background: apStatus.bg, color: apStatus.color, transition: 'all 0.2s' }}>
+                  {apStatus.label}
+                </span>
+              )}
               {risk.category && <span style={{ fontSize: 11, padding: '2px 8px', borderRadius: 10, background: 'var(--bg3)', color: 'var(--text2)', border: '1px solid var(--border)' }}>{risk.category}</span>}
               {risk.status  && <span style={{ fontSize: 11, padding: '2px 8px', borderRadius: 10, background: 'var(--bg3)', color: 'var(--text2)', border: '1px solid var(--border)' }}>{risk.status}</span>}
             </div>
@@ -253,8 +279,10 @@ function RiskDetailModal({ risk: initialRisk, initialTab = 'details', onClose, o
                       <input type="number" min="1" max="5" value={form.impact || 1} onChange={e => setForm(p => ({ ...p, impact: e.target.value }))} />
                     </div>
                   </div>
-                  <div style={{ background: 'var(--bg3)', padding: '7px 12px', borderRadius: 6, fontSize: 13, marginBottom: 10 }}>
-                    Preview score: <strong>{(form.likelihood || 1) * (form.impact || 1)}</strong> / 25
+                  <div style={{ background: previewScore >= 20 ? '#ef444418' : previewScore >= 12 ? '#f9731618' : previewScore >= 6 ? '#eab30818' : '#22c55e18',
+                                border: `1px solid ${scoreColor(previewScore)}40`, padding: '7px 12px', borderRadius: 6, fontSize: 13, marginBottom: 10, transition: 'all 0.2s' }}>
+                    Risk score: <strong style={{ color: scoreColor(previewScore) }}>{previewScore}</strong> / 25 —&nbsp;
+                    <strong style={{ color: scoreColor(previewScore) }}>{displayLevel}</strong>
                   </div>
                   <div className="form-row" style={{ marginBottom: 10 }}>
                     <div className="form-group">
@@ -1098,6 +1126,7 @@ export function Risks() {
           key={detailRisk.id}
           risk={detailRisk}
           initialTab={detailInitTab}
+          appetite={appetite}
           onClose={() => setDetailRisk(null)}
           onSaved={updated => {
             setRisks(prev => prev.map(r => r.id === updated.id ? { ...r, ...updated } : r));

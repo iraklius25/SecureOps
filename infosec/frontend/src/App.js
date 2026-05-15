@@ -42,22 +42,6 @@ function useTheme() {
   return [theme, setTheme];
 }
 
-const FONT_SIZES = [
-  { id: 'sm', label: 'S', px: 13 },
-  { id: 'md', label: 'M', px: 15 },
-  { id: 'lg', label: 'L', px: 18 },
-];
-
-function useFontSize() {
-  const [size, setSizeState] = useState(() => parseInt(localStorage.getItem('fontSizePx') || '15', 10));
-  const setSize = px => {
-    setSizeState(px);
-    localStorage.setItem('fontSizePx', String(px));
-    document.body.style.fontSize = `${px}px`;
-  };
-  useEffect(() => { document.body.style.fontSize = `${size}px`; }, [size]);
-  return [size, setSize];
-}
 
 const api = axios.create({ baseURL: '/api' });
 api.interceptors.request.use(cfg => {
@@ -466,7 +450,6 @@ function Sidebar() {
   const [changePwd, setChangePwd] = useState(false);
   const [show2fa, setShow2fa] = useState(false);
   const [theme, setTheme] = useTheme();
-  const [fontSize, setFontSize] = useFontSize();
   const [collapsed, setCollapsed] = useState({});
 
   const toggleGroup = label => setCollapsed(c => ({ ...c, [label]: !c[label] }));
@@ -518,25 +501,6 @@ function Sidebar() {
             {THEMES.map(t => (
               <button key={t.id} title={t.label} onClick={() => setTheme(t.id)}
                 style={{ width: 18, height: 18, borderRadius: '50%', background: t.color, border: theme === t.id ? '2px solid var(--accent-h)' : '2px solid var(--border2)', cursor: 'pointer', padding: 0, flexShrink: 0 }} />
-            ))}
-          </div>
-        </div>
-        <div style={{ marginBottom: 8 }}>
-          <div style={{ fontSize: 10, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 5 }}>Font Size</div>
-          <div style={{ display: 'flex', gap: 4 }}>
-            {FONT_SIZES.map((f, i) => (
-              <button key={f.id} title={`${f.px}px`} onClick={() => setFontSize(f.px)}
-                style={{
-                  flex: 1, padding: '4px 0', borderRadius: 5, cursor: 'pointer', fontFamily: 'inherit',
-                  fontSize: 11 + i * 2,
-                  fontWeight: fontSize === f.px ? 700 : 500,
-                  background: fontSize === f.px ? 'var(--accent)' : 'var(--bg3)',
-                  color: fontSize === f.px ? '#fff' : 'var(--text2)',
-                  border: `1px solid ${fontSize === f.px ? 'var(--accent)' : 'var(--border)'}`,
-                  transition: 'all 0.15s',
-                }}>
-                {f.label}
-              </button>
             ))}
           </div>
         </div>
