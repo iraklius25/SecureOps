@@ -1,5 +1,9 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { api } from '../App';
+import {
+  LineChart, Line, XAxis, YAxis, CartesianGrid,
+  Tooltip as RTooltip, ReferenceLine, ResponsiveContainer, Dot,
+} from 'recharts';
 
 const TREAT = ['mitigate','accept','transfer','avoid'];
 
@@ -26,81 +30,482 @@ function scoreColor(s) {
   return s >= 20 ? 'var(--critical)' : s >= 12 ? 'var(--high)' : s >= 6 ? 'var(--medium)' : 'var(--low)';
 }
 
-/* ─── Risk Detail Modal ───────────────────────────────── */
-function RiskDetailModal({ risk, onClose }) {
-  const sc = scoreColor(risk.risk_score);
+/* ─── Risk Detail Modal (tabbed: Details / Controls / History) ── */
+function RiskDetailModal({ risk: initialRisk, initialTab = 'details', onClose, onSaved }) {
+  const [tab,     setTab]     = useState(initialTab);
+  const [risk,    setRisk]    = useState(initialRisk);
+  const [editMode, setEditMode] = useState(false);
+  const [form,    setForm]    = useState({ ...initialRisk });
+  const [changeNote, setChangeNote] = useState('');
+  const [saving,  setSaving]  = useState(false);
+  const [saveMsg, setSaveMsg] = useState('');
+
+  // Controls state
+  const [mapped,    setMapped]    = useState([]);
+  const [allCtrls,  setAllCtrls]  = useState([]);
+  const [ctrlLoad,  setCtrlLoad]  = useState(false);
+  const [ctrlLoaded, setCtrlLoaded] = useState(false);
+  const [addCtrlId, setAddCtrlId] = useState('');
+  const [addStatus, setAddStatus] = useState('not_assessed');
+  const [addNotes,  setAddNotes]  = useState('');
+  const [ctrlSaving, setCtrlSaving] = useState(false);
+  const [ctrlErr,   setCtrlErr]   = useState('');
+
+  // History state
+  const [history,   setHistory]   = useState([]);
+  const [histLoad,  setHistLoad]  = useState(false);
+  const [histLoaded, setHistLoaded] = useState(false);
+
   const AI_COLORS = { unacceptable:'#ef4444', high:'#f97316', limited:'#f59e0b', minimal:'#10b981' };
+  const sc = scoreColor(risk.risk_score);
 
   const Field = ({ label, value, mono }) => !value && value !== 0 ? null : (
     <div style={{ marginBottom: 12 }}>
-      <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--text3)', textTransform: 'uppercase',
-                    letterSpacing: '0.07em', marginBottom: 3 }}>{label}</div>
+      <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: 3 }}>{label}</div>
       <div style={{ fontSize: 13, color: 'var(--text1)', fontFamily: mono ? 'monospace' : 'inherit', lineHeight: 1.5 }}>{value}</div>
     </div>
   );
 
+  const loadControls = useCallback(async () => {
+    setCtrlLoad(true); setCtrlErr('');
+    try {
+      const [m, all] = await Promise.all([
+        api.get(`/compliance/risks/${risk.id}/controls`),
+        api.get('/compliance/controls'),
+      ]);
+      setMapped(m.data);
+      setAllCtrls(all.data);
+      const ids = new Set(m.data.map(c => c.id));
+      setAddCtrlId(all.data.find(c => !ids.has(c.id))?.id || '');
+      setCtrlLoaded(true);
+    } catch (e) { setCtrlErr(e.response?.data?.error || 'Failed to load controls'); }
+    finally { setCtrlLoad(false); }
+  }, [risk.id]);
+
+  const loadHistory = useCallback(async () => {
+    setHistLoad(true);
+    try {
+      const r = await api.get(`/risks/${risk.id}/history`);
+      setHistory(r.data);
+      setHistLoaded(true);
+    } catch (e) {}
+    finally { setHistLoad(false); }
+  }, [risk.id]);
+
+  useEffect(() => {
+    if (tab === 'controls' && !ctrlLoaded) loadControls();
+    if (tab === 'history'  && !histLoaded) loadHistory();
+  }, [tab, ctrlLoaded, histLoaded, loadControls, loadHistory]);
+
+  const save = async () => {
+    setSaving(true); setSaveMsg('');
+    try {
+      const payload = {
+        title:         form.title,
+        description:   form.description,
+        category:      form.category,
+        likelihood:    parseInt(form.likelihood),
+        impact:        parseInt(form.impact),
+        treatment:     form.treatment,
+        status:        form.status,
+        owner:         form.owner,
+        review_date:   form.review_date ? form.review_date.slice(0, 10) : null,
+        eu_ai_act_tier: form.eu_ai_act_tier || null,
+        notes:         form.notes,
+        change_note:   changeNote || null,
+      };
+      const r = await api.patch(`/risks/${risk.id}`, payload);
+      setRisk(r.data);
+      setForm(r.data);
+      setChangeNote('');
+      setSaveMsg('Saved');
+      setEditMode(false);
+      setHistLoaded(false); // force history reload
+      onSaved && onSaved(r.data);
+      setTimeout(() => setSaveMsg(''), 2500);
+    } catch (ex) { setSaveMsg(ex.response?.data?.error || 'Save failed'); }
+    finally { setSaving(false); }
+  };
+
+  const addMapping = async () => {
+    if (!addCtrlId) return;
+    setCtrlSaving(true); setCtrlErr('');
+    try {
+      await api.post(`/compliance/risks/${risk.id}/controls`, { control_id: addCtrlId, status: addStatus, notes: addNotes });
+      setAddNotes('');
+      setCtrlLoaded(false);
+      await loadControls();
+    } catch (e) { setCtrlErr(e.response?.data?.error || 'Failed to add'); }
+    finally { setCtrlSaving(false); }
+  };
+
+  const removeMapping = async ctrlId => {
+    await api.delete(`/compliance/risks/${risk.id}/controls/${ctrlId}`);
+    setCtrlLoaded(false);
+    loadControls();
+  };
+
+  const mappedIds = new Set(mapped.map(c => c.id));
+  const unmapped  = allCtrls.filter(c => !mappedIds.has(c.id));
+
+  // History chart
+  const histChart = history.map((h, i) => ({
+    idx:    i + 1,
+    score:  h.risk_score,
+    level:  h.risk_level,
+    date:   new Date(h.changed_at).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: '2-digit' }),
+    note:   h.change_note,
+    who:    h.changed_by_name,
+    treat:  h.treatment,
+    status: h.status,
+  }));
+
+  const levelColor = l => l === 'critical' ? '#ef4444' : l === 'high' ? '#f97316' : l === 'medium' ? '#eab308' : '#22c55e';
+
+  const CustomDot = ({ cx, cy, payload }) => (
+    <circle cx={cx} cy={cy} r={5} fill={levelColor(payload.level)} stroke="#fff" strokeWidth={1.5} />
+  );
+
+  const TABS = [
+    { key: 'details',  label: 'Details' },
+    { key: 'controls', label: `Controls${mapped.length > 0 ? ` (${mapped.length})` : ''}` },
+    { key: 'history',  label: `History${history.length > 0 ? ` (${history.length})` : ''}` },
+  ];
+
   return (
     <div className="modal-overlay" onClick={e => e.target === e.currentTarget && onClose()}>
-      <div className="modal" style={{ maxWidth: 660 }}>
-        <div className="modal-header">
+      <div className="modal" style={{ maxWidth: 720, display: 'flex', flexDirection: 'column', maxHeight: '92vh' }}>
+
+        {/* Header */}
+        <div className="modal-header" style={{ flexShrink: 0 }}>
           <div style={{ flex: 1, minWidth: 0 }}>
-            <h2 style={{ marginBottom: 8 }}>{risk.title}</h2>
-            <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-              <div className={`risk-score ${risk.risk_score >= 20 ? 'risk-critical' : risk.risk_score >= 12 ? 'risk-high' : risk.risk_score >= 6 ? 'risk-medium' : 'risk-low'}`}>
-                {risk.risk_score}
-              </div>
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', marginBottom: 6 }}>
+              <div className={`risk-score ${risk.risk_score >= 20 ? 'risk-critical' : risk.risk_score >= 12 ? 'risk-high' : risk.risk_score >= 6 ? 'risk-medium' : 'risk-low'}`}>{risk.risk_score}</div>
               <span className={`badge badge-${risk.risk_level}`}>{risk.risk_level}</span>
               <span style={{ fontSize: 12, color: 'var(--text3)' }}>L{risk.likelihood} × I{risk.impact}</span>
               {risk.category && <span style={{ fontSize: 11, padding: '2px 8px', borderRadius: 10, background: 'var(--bg3)', color: 'var(--text2)', border: '1px solid var(--border)' }}>{risk.category}</span>}
-              {risk.status && <span style={{ fontSize: 11, padding: '2px 8px', borderRadius: 10, background: 'var(--bg3)', color: 'var(--text2)', border: '1px solid var(--border)' }}>{risk.status}</span>}
+              {risk.status  && <span style={{ fontSize: 11, padding: '2px 8px', borderRadius: 10, background: 'var(--bg3)', color: 'var(--text2)', border: '1px solid var(--border)' }}>{risk.status}</span>}
             </div>
+            <h2 style={{ marginBottom: 0 }}>{risk.title}</h2>
           </div>
           <button className="modal-close" onClick={onClose}>✕</button>
         </div>
 
-        <div className="modal-body" style={{ maxHeight: '65vh', overflowY: 'auto' }}>
-          {risk.description && (
-            <div style={{ padding: '12px 14px', background: 'var(--bg3)', borderRadius: 8, marginBottom: 20,
-                          fontSize: 13, color: 'var(--text2)', lineHeight: 1.7, borderLeft: `3px solid ${sc}` }}>
-              {risk.description}
+        {/* Tab bar */}
+        <div style={{ display: 'flex', borderBottom: '1px solid var(--border)', paddingLeft: 24, flexShrink: 0 }}>
+          {TABS.map(t => (
+            <button key={t.key} onClick={() => setTab(t.key)} style={{
+              padding: '8px 16px', background: 'none', border: 'none', cursor: 'pointer', fontSize: 13,
+              borderBottom: tab === t.key ? '2px solid var(--accent)' : '2px solid transparent',
+              color: tab === t.key ? 'var(--accent)' : 'var(--text3)',
+              fontWeight: tab === t.key ? 600 : 400, marginBottom: -1,
+            }}>{t.label}</button>
+          ))}
+        </div>
+
+        {/* Body */}
+        <div className="modal-body" style={{ flex: 1, overflowY: 'auto' }}>
+
+          {/* ── Details tab ── */}
+          {tab === 'details' && (
+            <div>
+              {saveMsg && <div className={`alert ${saveMsg === 'Saved' ? 'alert-success' : 'alert-error'}`} style={{ marginBottom: 12 }}>{saveMsg}</div>}
+
+              {!editMode && risk.description && (
+                <div style={{ padding: '12px 14px', background: 'var(--bg3)', borderRadius: 8, marginBottom: 16,
+                              fontSize: 13, color: 'var(--text2)', lineHeight: 1.7, borderLeft: `3px solid ${sc}` }}>
+                  {risk.description}
+                </div>
+              )}
+
+              {editMode ? (
+                <div>
+                  <div className="form-group" style={{ marginBottom: 10 }}>
+                    <label>Title</label>
+                    <input value={form.title || ''} onChange={e => setForm(p => ({ ...p, title: e.target.value }))} />
+                  </div>
+                  <div className="form-group" style={{ marginBottom: 10 }}>
+                    <label>Description</label>
+                    <textarea rows={3} value={form.description || ''} onChange={e => setForm(p => ({ ...p, description: e.target.value }))} />
+                  </div>
+                  <div className="form-row" style={{ marginBottom: 10 }}>
+                    <div className="form-group">
+                      <label>Category</label>
+                      <select value={form.category || ''} onChange={e => setForm(p => ({ ...p, category: e.target.value }))}>
+                        <option value="">— None —</option>
+                        {CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
+                      </select>
+                    </div>
+                    <div className="form-group">
+                      <label>Status</label>
+                      <select value={form.status || 'open'} onChange={e => setForm(p => ({ ...p, status: e.target.value }))}>
+                        {['open','in_progress','closed'].map(s => <option key={s}>{s}</option>)}
+                      </select>
+                    </div>
+                  </div>
+                  <div className="form-row" style={{ marginBottom: 10 }}>
+                    <div className="form-group">
+                      <label>Likelihood (1–5)</label>
+                      <input type="number" min="1" max="5" value={form.likelihood || 1} onChange={e => setForm(p => ({ ...p, likelihood: e.target.value }))} />
+                    </div>
+                    <div className="form-group">
+                      <label>Impact (1–5)</label>
+                      <input type="number" min="1" max="5" value={form.impact || 1} onChange={e => setForm(p => ({ ...p, impact: e.target.value }))} />
+                    </div>
+                  </div>
+                  <div style={{ background: 'var(--bg3)', padding: '7px 12px', borderRadius: 6, fontSize: 13, marginBottom: 10 }}>
+                    Preview score: <strong>{(form.likelihood || 1) * (form.impact || 1)}</strong> / 25
+                  </div>
+                  <div className="form-row" style={{ marginBottom: 10 }}>
+                    <div className="form-group">
+                      <label>Treatment</label>
+                      <select value={form.treatment || 'mitigate'} onChange={e => setForm(p => ({ ...p, treatment: e.target.value }))}>
+                        {TREAT.map(t => <option key={t}>{t}</option>)}
+                      </select>
+                    </div>
+                    <div className="form-group">
+                      <label>EU AI Act Tier</label>
+                      <select value={form.eu_ai_act_tier || ''} onChange={e => setForm(p => ({ ...p, eu_ai_act_tier: e.target.value }))}>
+                        <option value="">— Not applicable —</option>
+                        <option value="unacceptable">Unacceptable</option>
+                        <option value="high">High</option>
+                        <option value="limited">Limited</option>
+                        <option value="minimal">Minimal</option>
+                      </select>
+                    </div>
+                  </div>
+                  <div className="form-row" style={{ marginBottom: 10 }}>
+                    <div className="form-group">
+                      <label>Owner</label>
+                      <input value={form.owner || ''} onChange={e => setForm(p => ({ ...p, owner: e.target.value }))} placeholder="Risk owner" />
+                    </div>
+                    <div className="form-group">
+                      <label>Review Date</label>
+                      <input type="date" value={form.review_date ? form.review_date.slice(0, 10) : ''} onChange={e => setForm(p => ({ ...p, review_date: e.target.value }))} />
+                    </div>
+                  </div>
+                  <div className="form-group" style={{ marginBottom: 10 }}>
+                    <label>Notes</label>
+                    <textarea rows={2} value={form.notes || ''} onChange={e => setForm(p => ({ ...p, notes: e.target.value }))} placeholder="Internal notes..." />
+                  </div>
+                  <div className="form-group" style={{ marginBottom: 0, padding: '12px', background: 'var(--bg3)', borderRadius: 8, borderLeft: '3px solid var(--accent)' }}>
+                    <label>Change note <span style={{ fontWeight: 400, color: 'var(--text3)', fontSize: 11 }}>(describe what action was taken — shown in history)</span></label>
+                    <input value={changeNote} onChange={e => setChangeNote(e.target.value)} placeholder="e.g. Applied firewall rule, updated patch policy, transferred to insurer…" />
+                  </div>
+                </div>
+              ) : (
+                <div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0 28px' }}>
+                    <div>
+                      <Field label="Likelihood" value={`${risk.likelihood} / 5`} />
+                      <Field label="Impact"     value={`${risk.impact} / 5`} />
+                      <Field label="Risk Score" value={`${risk.risk_score} / 25`} />
+                      <Field label="Risk Level" value={risk.risk_level?.toUpperCase()} />
+                      <Field label="Treatment"  value={risk.treatment} />
+                    </div>
+                    <div>
+                      <Field label="Category"    value={risk.category} />
+                      <Field label="Owner"       value={risk.owner_name || risk.owner} />
+                      <Field label="Review Date" value={risk.review_date ? new Date(risk.review_date).toLocaleDateString('en-GB') : null} />
+                      <Field label="Asset"       value={risk.ip_address || risk.hostname} mono />
+                      <Field label="Created"     value={risk.created_at ? new Date(risk.created_at).toLocaleDateString('en-GB') : null} />
+                    </div>
+                  </div>
+                  {risk.notes && <div style={{ marginTop: 4 }}><Field label="Notes" value={risk.notes} /></div>}
+                  {risk.eu_ai_act_tier && (
+                    <div style={{ marginTop: 12, padding: '10px 14px', borderRadius: 8,
+                                  background: `${AI_COLORS[risk.eu_ai_act_tier]}15`,
+                                  border: `1px solid ${AI_COLORS[risk.eu_ai_act_tier]}40` }}>
+                      <span style={{ fontSize: 12, fontWeight: 700, color: AI_COLORS[risk.eu_ai_act_tier] }}>
+                        EU AI Act — {risk.eu_ai_act_tier.charAt(0).toUpperCase() + risk.eu_ai_act_tier.slice(1)} risk tier
+                      </span>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           )}
 
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0 28px' }}>
+          {/* ── Controls tab ── */}
+          {tab === 'controls' && (
             <div>
-              <Field label="Likelihood"  value={`${risk.likelihood} / 5`} />
-              <Field label="Impact"      value={`${risk.impact} / 5`} />
-              <Field label="Risk Score"  value={`${risk.risk_score} / 25`} />
-              <Field label="Risk Level"  value={risk.risk_level?.toUpperCase()} />
-              <Field label="Treatment"   value={risk.treatment} />
-            </div>
-            <div>
-              <Field label="Category"   value={risk.category} />
-              <Field label="Owner"      value={risk.owner} />
-              <Field label="Review Date" value={risk.review_date ? new Date(risk.review_date).toLocaleDateString('en-GB') : null} />
-              <Field label="Asset"      value={risk.ip_address || risk.hostname} mono />
-              <Field label="Created"    value={risk.created_at ? new Date(risk.created_at).toLocaleDateString('en-GB') : null} />
-            </div>
-          </div>
-
-          {risk.notes && (
-            <div style={{ marginTop: 4 }}>
-              <Field label="Notes" value={risk.notes} />
+              {ctrlErr && <div className="alert alert-error" style={{ marginBottom: 12 }}>{ctrlErr}</div>}
+              {ctrlLoad ? (
+                <div className="empty-state"><div className="spinner" /></div>
+              ) : (
+                <>
+                  <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 10 }}>Mapped Controls ({mapped.length})</div>
+                  {mapped.length === 0 ? (
+                    <div style={{ fontSize: 12, color: 'var(--text3)', marginBottom: 16 }}>No controls mapped yet.</div>
+                  ) : (
+                    <table style={{ marginBottom: 20 }}>
+                      <thead>
+                        <tr>
+                          <th style={{ width: 100 }}>Control ID</th>
+                          <th>Name</th>
+                          <th style={{ width: 80 }}>Framework</th>
+                          <th style={{ width: 120 }}>Status</th>
+                          <th style={{ width: 36 }}></th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {mapped.map(ctrl => (
+                          <tr key={ctrl.id}>
+                            <td className="mono" style={{ color: 'var(--info)', fontWeight: 600, fontSize: 11 }}>{ctrl.control_id}</td>
+                            <td>
+                              <div style={{ fontWeight: 500, fontSize: 12 }}>{ctrl.name}</div>
+                              {ctrl.mapping_notes && <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 2 }}>{ctrl.mapping_notes}</div>}
+                            </td>
+                            <td style={{ fontSize: 11, color: 'var(--text3)' }}>{ctrl.framework?.replace('_',' ')}</td>
+                            <td><span style={{ color: MAPPING_COLORS[ctrl.mapping_status] || 'var(--text3)', fontWeight: 600, fontSize: 11 }}>{MAPPING_LABELS[ctrl.mapping_status] || ctrl.mapping_status}</span></td>
+                            <td><button onClick={() => removeMapping(ctrl.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text3)', fontSize: 14 }} title="Remove">✕</button></td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  )}
+                  <div style={{ borderTop: '1px solid var(--border)', paddingTop: 14 }}>
+                    <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 10 }}>+ Add Control Mapping</div>
+                    {unmapped.length === 0 ? (
+                      <div style={{ fontSize: 12, color: 'var(--text3)' }}>All available controls are already mapped.</div>
+                    ) : (
+                      <>
+                        <div className="form-group" style={{ marginBottom: 8 }}>
+                          <label>Control</label>
+                          <select value={addCtrlId} onChange={e => setAddCtrlId(e.target.value)}>
+                            {unmapped.map(c => <option key={c.id} value={c.id}>[{c.framework?.replace('_',' ')}] {c.control_id} — {c.name}</option>)}
+                          </select>
+                        </div>
+                        <div className="form-row" style={{ marginBottom: 8 }}>
+                          <div className="form-group">
+                            <label>Status</label>
+                            <select value={addStatus} onChange={e => setAddStatus(e.target.value)}>
+                              {MAPPING_STATUS.map(s => <option key={s} value={s}>{MAPPING_LABELS[s]}</option>)}
+                            </select>
+                          </div>
+                          <div className="form-group">
+                            <label>Notes</label>
+                            <input value={addNotes} onChange={e => setAddNotes(e.target.value)} placeholder="Evidence, action…" />
+                          </div>
+                        </div>
+                        <button className="btn btn-primary" onClick={addMapping} disabled={!addCtrlId || ctrlSaving}>
+                          {ctrlSaving ? 'Adding…' : 'Add Mapping'}
+                        </button>
+                      </>
+                    )}
+                  </div>
+                </>
+              )}
             </div>
           )}
 
-          {risk.eu_ai_act_tier && (
-            <div style={{ marginTop: 12, padding: '10px 14px', borderRadius: 8,
-                          background: `${AI_COLORS[risk.eu_ai_act_tier]}15`,
-                          border: `1px solid ${AI_COLORS[risk.eu_ai_act_tier]}40` }}>
-              <span style={{ fontSize: 12, fontWeight: 700, color: AI_COLORS[risk.eu_ai_act_tier] }}>
-                EU AI Act — {risk.eu_ai_act_tier.charAt(0).toUpperCase() + risk.eu_ai_act_tier.slice(1)} risk tier
-              </span>
+          {/* ── History tab ── */}
+          {tab === 'history' && (
+            <div>
+              {histLoad ? (
+                <div className="empty-state"><div className="spinner" /></div>
+              ) : history.length === 0 ? (
+                <div style={{ textAlign: 'center', padding: '32px 0', color: 'var(--text3)', fontSize: 13 }}>
+                  No history yet. History is recorded each time the risk is updated.
+                </div>
+              ) : (
+                <>
+                  {/* Score chart */}
+                  {histChart.length > 1 && (
+                    <div style={{ marginBottom: 20 }}>
+                      <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text2)', marginBottom: 8 }}>Risk Score Trend</div>
+                      <ResponsiveContainer width="100%" height={160}>
+                        <LineChart data={histChart} margin={{ top: 8, right: 16, bottom: 4, left: 0 }}>
+                          <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
+                          <XAxis dataKey="date" tick={{ fill: 'var(--text3)', fontSize: 10 }} />
+                          <YAxis domain={[0, 25]} ticks={[0,6,12,20,25]} tick={{ fill: 'var(--text3)', fontSize: 10 }} width={28} />
+                          <RTooltip
+                            contentStyle={{ background: 'var(--bg2)', border: '1px solid var(--border)', color: 'var(--text1)', fontSize: 12 }}
+                            formatter={(v, _, props) => [`${v} (${props.payload.level})`, 'Score']}
+                            labelFormatter={label => `Date: ${label}`}
+                          />
+                          <ReferenceLine y={20} stroke="#ef4444" strokeDasharray="3 3" label={{ value: 'Critical', fill: '#ef4444', fontSize: 10 }} />
+                          <ReferenceLine y={12} stroke="#f97316" strokeDasharray="3 3" label={{ value: 'High', fill: '#f97316', fontSize: 10 }} />
+                          <ReferenceLine y={6}  stroke="#eab308" strokeDasharray="3 3" label={{ value: 'Medium', fill: '#eab308', fontSize: 10 }} />
+                          <Line type="monotone" dataKey="score" stroke="var(--accent)" strokeWidth={2}
+                            dot={<CustomDot />} activeDot={{ r: 6 }} />
+                        </LineChart>
+                      </ResponsiveContainer>
+                      {/* Level legend */}
+                      <div style={{ display: 'flex', gap: 14, marginTop: 6, flexWrap: 'wrap' }}>
+                        {[['critical','#ef4444'],['high','#f97316'],['medium','#eab308'],['low','#22c55e']].map(([l, c]) => (
+                          <div key={l} style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 11, color: 'var(--text2)' }}>
+                            <div style={{ width: 10, height: 10, borderRadius: '50%', background: c, flexShrink: 0 }} />
+                            {l.charAt(0).toUpperCase() + l.slice(1)}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Timeline */}
+                  <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text2)', marginBottom: 10 }}>
+                    Timeline ({history.length} {history.length === 1 ? 'entry' : 'entries'})
+                  </div>
+                  <div style={{ position: 'relative' }}>
+                    {/* vertical line */}
+                    <div style={{ position: 'absolute', left: 11, top: 0, bottom: 0, width: 2, background: 'var(--border)' }} />
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
+                      {[...history].reverse().map((h, i) => {
+                        const lc = levelColor(h.risk_level);
+                        return (
+                          <div key={h.id} style={{ display: 'flex', gap: 16, paddingBottom: 18, position: 'relative' }}>
+                            {/* dot */}
+                            <div style={{ width: 24, flexShrink: 0, display: 'flex', alignItems: 'flex-start', justifyContent: 'center', paddingTop: 2, zIndex: 1 }}>
+                              <div style={{ width: 12, height: 12, borderRadius: '50%', background: lc, border: '2px solid var(--bg1)', flexShrink: 0 }} />
+                            </div>
+                            <div style={{ flex: 1, background: 'var(--bg3)', borderRadius: 8, padding: '10px 14px', border: `1px solid var(--border)`, borderLeft: `3px solid ${lc}` }}>
+                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 6, flexWrap: 'wrap', gap: 6 }}>
+                                <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                                  <span style={{ fontSize: 16, fontWeight: 700, color: lc, lineHeight: 1 }}>{h.risk_score}</span>
+                                  <span className={`badge badge-${h.risk_level}`}>{h.risk_level}</span>
+                                  <span style={{ fontSize: 11, color: 'var(--text3)' }}>L{h.likelihood}×I{h.impact}</span>
+                                  <span style={{ fontSize: 11, padding: '1px 7px', borderRadius: 8, background: 'var(--bg2)', color: 'var(--text2)', border: '1px solid var(--border)' }}>{h.treatment}</span>
+                                  <span style={{ fontSize: 11, padding: '1px 7px', borderRadius: 8, background: 'var(--bg2)', color: 'var(--text2)', border: '1px solid var(--border)' }}>{h.status}</span>
+                                </div>
+                                <div style={{ fontSize: 11, color: 'var(--text3)', textAlign: 'right', flexShrink: 0 }}>
+                                  <div>{new Date(h.changed_at).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}</div>
+                                  <div>{new Date(h.changed_at).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}</div>
+                                </div>
+                              </div>
+                              {h.change_note && (
+                                <div style={{ fontSize: 12, color: 'var(--text1)', padding: '6px 10px', background: 'var(--bg2)', borderRadius: 5, marginBottom: 4 }}>
+                                  {h.change_note}
+                                </div>
+                              )}
+                              {h.changed_by_name && (
+                                <div style={{ fontSize: 11, color: 'var(--text3)' }}>by {h.changed_by_name}</div>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </>
+              )}
             </div>
           )}
         </div>
 
-        <div className="modal-footer">
+        {/* Footer */}
+        <div className="modal-footer" style={{ flexShrink: 0 }}>
+          {tab === 'details' && !editMode && (
+            <button className="btn btn-primary" onClick={() => { setEditMode(true); setForm({ ...risk }); setChangeNote(''); }}>
+              Edit
+            </button>
+          )}
+          {tab === 'details' && editMode && (
+            <>
+              <button className="btn btn-secondary" onClick={() => { setEditMode(false); setForm({ ...risk }); setChangeNote(''); }}>Cancel</button>
+              <button className="btn btn-primary" onClick={save} disabled={saving}>{saving ? 'Saving…' : 'Save Changes'}</button>
+            </>
+          )}
           <button className="btn btn-secondary" onClick={onClose}>Close</button>
         </div>
       </div>
@@ -452,11 +857,11 @@ function RiskHeatmap({ risks }) {
 
 /* ─── Main Risks Page ─────────────────────────────────── */
 export function Risks() {
-  const [risks,       setRisks]       = useState([]);
-  const [modal,       setModal]       = useState(false);
-  const [detailRisk,  setDetailRisk]  = useState(null);
-  const [ctrlRisk,    setCtrlRisk]    = useState(null);
-  const [tab,         setTab]         = useState('list'); // 'list' | 'heatmap'
+  const [risks,        setRisks]       = useState([]);
+  const [modal,        setModal]       = useState(false);
+  const [detailRisk,   setDetailRisk]  = useState(null);
+  const [detailInitTab,setDetailInitTab] = useState('details');
+  const [tab,          setTab]         = useState('list'); // 'list' | 'heatmap'
   const [form,        setForm]        = useState({
     title:'', description:'', category:'',
     likelihood:3, impact:3, treatment:'mitigate',
@@ -554,7 +959,7 @@ export function Risks() {
                     (!filterCat    || (r.category || '') === filterCat) &&
                     (!filterStatus || (r.status   || 'open') === filterStatus)
                   ).map(r => (
-                    <tr key={r.id} style={{ cursor: 'pointer' }} onClick={() => setDetailRisk(r)}
+                    <tr key={r.id} style={{ cursor: 'pointer' }} onClick={() => { setDetailInitTab('details'); setDetailRisk(r); }}
                       title="Click to view risk details">
                       <td><div className={`risk-score ${scoreColorClass(r.risk_score)}`}>{r.risk_score}</div></td>
                       <td style={{ maxWidth: 260 }}>
@@ -607,7 +1012,7 @@ export function Risks() {
                       <td onClick={e => e.stopPropagation()}>
                         <button
                           className="btn btn-secondary btn-sm"
-                          onClick={() => setCtrlRisk(r)}
+                          onClick={() => { setDetailInitTab('controls'); setDetailRisk(r); }}
                           title="Map compliance controls"
                         >
                           🛡 Controls
@@ -689,12 +1094,16 @@ export function Risks() {
 
       {/* ── Risk Detail Modal ── */}
       {detailRisk && (
-        <RiskDetailModal risk={detailRisk} onClose={() => setDetailRisk(null)} />
-      )}
-
-      {/* ── Compliance Controls Modal ── */}
-      {ctrlRisk && (
-        <RiskControlsModal risk={ctrlRisk} onClose={() => setCtrlRisk(null)} />
+        <RiskDetailModal
+          key={detailRisk.id}
+          risk={detailRisk}
+          initialTab={detailInitTab}
+          onClose={() => setDetailRisk(null)}
+          onSaved={updated => {
+            setRisks(prev => prev.map(r => r.id === updated.id ? { ...r, ...updated } : r));
+            setDetailRisk(updated);
+          }}
+        />
       )}
     </div>
   );

@@ -18,6 +18,7 @@ const STATUS_LABELS = {
 /* ─── Gap Assessment framework list ─────────────────── */
 const GAP_FRAMEWORKS = [
   { id: 'ISO27001', label: 'ISO 27001' },
+  { id: 'ISO42001', label: 'ISO 42001' },
   { id: 'GDPR',     label: 'GDPR' },
   { id: 'ISO22301', label: 'ISO 22301' },
   { id: 'NISTCSF',  label: 'NIST CSF' },
