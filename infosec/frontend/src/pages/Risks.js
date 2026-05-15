@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import { api } from '../App';
+import React, { useState, useEffect, useCallback, useContext } from 'react';
+import { api, AuthContext } from '../App';
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid,
   Tooltip as RTooltip, ReferenceLine, ResponsiveContainer, Dot,
@@ -885,6 +885,8 @@ function RiskHeatmap({ risks }) {
 
 /* ─── Main Risks Page ─────────────────────────────────── */
 export function Risks() {
+  const { user }                       = useContext(AuthContext);
+  const canEdit                        = user?.role === 'admin' || user?.role === 'analyst';
   const [risks,        setRisks]       = useState([]);
   const [modal,        setModal]       = useState(false);
   const [detailRisk,   setDetailRisk]  = useState(null);
@@ -924,6 +926,16 @@ export function Risks() {
   };
 
   const update = async (id, patch) => { await api.patch(`/risks/${id}`, patch); load(); };
+
+  const deleteRisk = async (r, e) => {
+    e.stopPropagation();
+    if (!window.confirm(`Permanently delete "${r.title}"?\n\nThis will also remove all history. This cannot be undone.`)) return;
+    try {
+      await api.delete(`/risks/${r.id}`);
+      setRisks(prev => prev.filter(x => x.id !== r.id));
+      if (detailRisk?.id === r.id) setDetailRisk(null);
+    } catch (ex) { alert(ex.response?.data?.error || 'Delete failed'); }
+  };
 
   const scoreColorClass = s => s >= 20 ? 'risk-critical' : s >= 12 ? 'risk-high' : s >= 6 ? 'risk-medium' : 'risk-low';
 
@@ -980,6 +992,7 @@ export function Risks() {
                     <th>Score</th><th>Risk</th><th>Category</th>
                     <th>L</th><th>I</th><th>Level</th><th>Appetite</th>
                     <th>AI Act</th><th>Treatment</th><th>Asset</th><th>Status</th><th>Controls</th>
+                    {canEdit && <th></th>}
                   </tr>
                 </thead>
                 <tbody>
@@ -999,8 +1012,22 @@ export function Risks() {
                         )}
                       </td>
                       <td className="text-muted">{r.category || '—'}</td>
-                      <td className="mono">{r.likelihood}</td>
-                      <td className="mono">{r.impact}</td>
+                      <td onClick={e => e.stopPropagation()}>
+                        <input type="number" min="1" max="5" value={r.likelihood}
+                          onChange={e => { const v = Math.min(5, Math.max(1, parseInt(e.target.value) || 1)); update(r.id, { likelihood: v }); }}
+                          disabled={!canEdit}
+                          style={{ width: 40, textAlign: 'center', fontFamily: 'monospace', fontSize: 12,
+                                   background: 'var(--bg3)', border: '1px solid var(--border)',
+                                   borderRadius: 4, padding: '2px 4px', color: 'var(--text1)' }} />
+                      </td>
+                      <td onClick={e => e.stopPropagation()}>
+                        <input type="number" min="1" max="5" value={r.impact}
+                          onChange={e => { const v = Math.min(5, Math.max(1, parseInt(e.target.value) || 1)); update(r.id, { impact: v }); }}
+                          disabled={!canEdit}
+                          style={{ width: 40, textAlign: 'center', fontFamily: 'monospace', fontSize: 12,
+                                   background: 'var(--bg3)', border: '1px solid var(--border)',
+                                   borderRadius: 4, padding: '2px 4px', color: 'var(--text1)' }} />
+                      </td>
                       <td><span className={`badge badge-${r.risk_level}`}>{r.risk_level}</span></td>
                       <td>
                         {(() => {
@@ -1046,6 +1073,18 @@ export function Risks() {
                           🛡 Controls
                         </button>
                       </td>
+                      {canEdit && (
+                        <td onClick={e => e.stopPropagation()}>
+                          <button
+                            className="btn btn-danger btn-sm"
+                            onClick={e => deleteRisk(r, e)}
+                            title="Delete risk"
+                            style={{ fontSize: 11, padding: '3px 8px' }}
+                          >
+                            Delete
+                          </button>
+                        </td>
+                      )}
                     </tr>
                   ))}
                 </tbody>

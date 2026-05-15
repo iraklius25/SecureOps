@@ -1,8 +1,9 @@
 // risks.js
-const router   = require('express').Router();
-const db       = require('../db');
+const router    = require('express').Router();
+const db        = require('../db');
 const { auth, requireRole } = require('../middleware/auth');
-const notifier = require('../services/notifier');
+const notifier  = require('../services/notifier');
+const auditLog  = require('../services/auditLog');
 
 router.get('/', auth, async (req, res) => {
   try {
@@ -28,6 +29,7 @@ router.post('/', auth, requireRole('admin','analyst'), async (req, res) => {
         eu_ai_act_tier||null,ai_system_id||null]);
     const risk = r.rows[0];
     notifier.notifyNewRisk(risk).catch(() => {});
+    auditLog.log(req, 'CREATE', 'risk', risk.id, risk.title, null, { level: risk.risk_level, score: risk.risk_score });
     // Record initial history entry
     const uname = await db.query('SELECT username FROM users WHERE id=$1', [req.user.id]);
     await db.query(`
@@ -91,6 +93,9 @@ router.patch('/:id', auth, requireRole('admin','analyst'), async (req, res) => {
         updated.risk_score, updated.risk_level, updated.likelihood, updated.impact,
         updated.treatment, updated.status, change_note || null]).catch(() => {});
 
+    auditLog.log(req, 'UPDATE', 'risk', updated.id, updated.title,
+      { level: oldLevel },
+      { level: updated.risk_level, score: updated.risk_score, treatment: updated.treatment, status: updated.status });
     const newLevel = updated.risk_level;
     if (oldLevel && newLevel && oldLevel !== newLevel) {
       const ragMap = { critical: 'red', high: 'amber', medium: 'amber', low: 'green' };
@@ -105,13 +110,18 @@ router.patch('/:id', auth, requireRole('admin','analyst'), async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-router.delete('/:id', auth, requireRole('admin'), async (req, res) => {
+router.delete('/:id', auth, requireRole('admin', 'analyst'), async (req, res) => {
   const { id } = req.params;
   const uuidRe = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
   if (!uuidRe.test(id)) return res.status(400).json({ error: 'Invalid id' });
   try {
-    const r = await db.query('DELETE FROM risks WHERE id=$1 RETURNING id', [id]);
-    if (r.rowCount === 0) return res.status(404).json({ error: 'Risk not found' });
+    const existing = await db.query('SELECT * FROM risks WHERE id=$1', [id]);
+    if (!existing.rows.length) return res.status(404).json({ error: 'Risk not found' });
+    const risk = existing.rows[0];
+    await db.query('DELETE FROM risks WHERE id=$1', [id]);
+    auditLog.log(req, 'DELETE', 'risk', id, risk.title,
+      { level: risk.risk_level, score: risk.risk_score, treatment: risk.treatment }, null);
+    notifier.notifyRiskDelete(risk, req.user?.username).catch(() => {});
     res.json({ ok: true, id });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });

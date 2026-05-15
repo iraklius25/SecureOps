@@ -255,6 +255,23 @@ async function notifyOverdue() {
   } catch (e) { logger.error('notifyOverdue error:', e.message); }
 }
 
+// ── Risk deleted notification ─────────────────────────────────
+async function notifyRiskDelete(risk, deletedBy) {
+  try {
+    const r = await db.query(`SELECT value FROM settings WHERE key='notify_on_risk_delete'`);
+    if (r.rows[0]?.value !== 'true') return;
+    const title   = `Risk Deleted: ${risk.title}`;
+    const message = [
+      `Level: ${(risk.risk_level || 'unknown').toUpperCase()} | Score: ${risk.risk_score || 0}`,
+      `Deleted by: ${deletedBy || 'unknown'}`,
+    ].join(' · ');
+    await Promise.all([
+      notifyInApp({ title, message, type: 'warning', resource: 'risk', link: '/risks' }),
+      notifyWebhook({ title, message, type: 'warning' }),
+    ]);
+  } catch (e) { logger.error('notifyRiskDelete error:', e.message); }
+}
+
 module.exports = { notifyInApp, notifyWebhook, notifyVuln, notifyScanComplete,
-                   notifyNewRisk, notifyApproval, notifyGrcActivity, notifyCertChange,
-                   notifyKpiChange, notifyNewAsset, notifyOverdue };
+                   notifyNewRisk, notifyRiskDelete, notifyApproval, notifyGrcActivity,
+                   notifyCertChange, notifyKpiChange, notifyNewAsset, notifyOverdue };

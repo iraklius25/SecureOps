@@ -885,6 +885,8 @@ export default function Settings() {
                 desc: 'Alert when a network scan finishes — includes assets found and vuln count' },
               { key: 'notify_on_new_risk',      label: 'Notify on New Risk Register Entry',
                 desc: 'Details: risk title, level, score (1–25), category, treatment strategy, owner' },
+              { key: 'notify_on_risk_delete',   label: 'Notify on Risk Deletion',
+                desc: 'Alert when a registered risk is permanently deleted — includes title, level, score, deleted by' },
               { key: 'notify_on_approval',      label: 'Notify on Approvals',
                 desc: 'Details: vulnerability title, severity, action requested, requester name, decision (approved/rejected)' },
               { key: 'notify_on_grc_activity',  label: 'Notify on GRC Hub Activity',
