@@ -28,7 +28,7 @@ function createTransport(cfg) {
   });
 }
 
-async function sendMail({ to, subject, html }) {
+async function sendMail({ to, subject, html, attachments }) {
   const cfg = await getSmtpConfig();
   if (cfg.smtp_enabled !== 'true') {
     logger.debug('mailer: smtp_enabled is false, skipping email');
@@ -45,6 +45,7 @@ async function sendMail({ to, subject, html }) {
       to,
       subject,
       html,
+      ...(attachments?.length ? { attachments } : {}),
     });
     logger.info(`mailer: sent "${subject}" to ${to} (messageId: ${info.messageId})`);
   } catch (e) {

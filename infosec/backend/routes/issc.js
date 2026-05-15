@@ -1,6 +1,139 @@
 const router = require('express').Router();
 const db     = require('../db');
 const { auth, requireRole } = require('../middleware/auth');
+const logger = require('../services/logger');
+
+// ── ICS calendar helper ───────────────────────────────────────
+function buildICS(meeting) {
+  const d = new Date(meeting.meeting_date);
+  const ymd = d.toISOString().slice(0, 10).replace(/-/g, '');
+  const nextDay = new Date(d); nextDay.setDate(nextDay.getDate() + 1);
+  const ymdNext = nextDay.toISOString().slice(0, 10).replace(/-/g, '');
+  const stamp   = new Date().toISOString().replace(/[-:.]/g, '').slice(0, 15) + 'Z';
+  const esc = s => (s || '').replace(/\\/g, '\\\\').replace(/;/g, '\\;').replace(/,/g, '\\,').replace(/\n/g, '\\n');
+  const desc = [
+    meeting.agenda   ? `Agenda:\\n${esc(meeting.agenda)}` : null,
+    meeting.location ? `Location: ${esc(meeting.location)}` : null,
+    meeting.chair    ? `Chair: ${esc(meeting.chair)}` : null,
+  ].filter(Boolean).join('\\n\\n');
+  return [
+    'BEGIN:VCALENDAR',
+    'VERSION:2.0',
+    'PRODID:-//SecureOps//ISSC//EN',
+    'METHOD:REQUEST',
+    'BEGIN:VEVENT',
+    `UID:issc-${meeting.id}-${stamp}@secureops`,
+    `DTSTAMP:${stamp}`,
+    `DTSTART;VALUE=DATE:${ymd}`,
+    `DTEND;VALUE=DATE:${ymdNext}`,
+    `SUMMARY:${esc(meeting.title)}`,
+    meeting.location ? `LOCATION:${esc(meeting.location)}` : null,
+    desc ? `DESCRIPTION:${desc}` : null,
+    'STATUS:CONFIRMED',
+    'SEQUENCE:0',
+    'END:VEVENT',
+    'END:VCALENDAR',
+  ].filter(Boolean).join('\r\n');
+}
+
+// ── Send meeting invitations with .ics attachment ──────────────
+async function sendMeetingInvitations(meeting, memberIds) {
+  if (!memberIds?.length) return;
+  try {
+    const ids = memberIds.filter(id => /^[0-9a-f-]{36}$/i.test(id));
+    if (!ids.length) return;
+    const r = await db.query(
+      `SELECT full_name, email, role FROM issc_members WHERE id = ANY($1::uuid[]) AND email IS NOT NULL AND email <> ''`,
+      [ids]
+    );
+    if (!r.rows.length) return;
+    const mailer  = require('../services/mailer');
+    const ics     = buildICS(meeting);
+    const dateStr = new Date(meeting.meeting_date).toLocaleDateString('en-GB', { weekday:'long', year:'numeric', month:'long', day:'numeric' });
+    for (const m of r.rows) {
+      const html = `
+        <div style="font-family:sans-serif;max-width:600px">
+          <h2 style="color:#3b82f6;margin-bottom:4px">ISSC Meeting Invitation</h2>
+          <p style="color:#666;font-size:13px;margin-top:0">Information Security Steering Committee</p>
+          <p>Dear ${m.full_name},</p>
+          <p>You are invited to the following ISSC meeting. A calendar invitation (.ics) is attached.</p>
+          <table style="border-collapse:collapse;width:100%;margin:16px 0;font-size:13px">
+            <tr style="background:#f6f8fa"><td style="padding:10px 12px;border:1px solid #e0e0e0;font-weight:700;width:130px">Title</td><td style="padding:10px 12px;border:1px solid #e0e0e0">${meeting.title}</td></tr>
+            <tr><td style="padding:10px 12px;border:1px solid #e0e0e0;font-weight:700">Date</td><td style="padding:10px 12px;border:1px solid #e0e0e0">${dateStr}</td></tr>
+            <tr style="background:#f6f8fa"><td style="padding:10px 12px;border:1px solid #e0e0e0;font-weight:700">Type</td><td style="padding:10px 12px;border:1px solid #e0e0e0;text-transform:capitalize">${meeting.meeting_type || 'regular'}</td></tr>
+            ${meeting.location ? `<tr><td style="padding:10px 12px;border:1px solid #e0e0e0;font-weight:700">Location</td><td style="padding:10px 12px;border:1px solid #e0e0e0">${meeting.location}</td></tr>` : ''}
+            ${meeting.chair    ? `<tr style="background:#f6f8fa"><td style="padding:10px 12px;border:1px solid #e0e0e0;font-weight:700">Chair</td><td style="padding:10px 12px;border:1px solid #e0e0e0">${meeting.chair}</td></tr>` : ''}
+            <tr><td style="padding:10px 12px;border:1px solid #e0e0e0;font-weight:700">Your Role</td><td style="padding:10px 12px;border:1px solid #e0e0e0">${m.role}</td></tr>
+          </table>
+          ${meeting.agenda ? `<div style="margin:16px 0"><div style="font-weight:700;font-size:12px;text-transform:uppercase;letter-spacing:0.05em;color:#6b7280;margin-bottom:8px">Agenda</div><div style="background:#f6f8fa;padding:12px 14px;border-radius:6px;font-size:13px;white-space:pre-wrap;line-height:1.6;border-left:3px solid #3b82f6">${meeting.agenda}</div></div>` : ''}
+          <p style="color:#888;font-size:12px;margin-top:24px">A calendar file (.ics) is attached — import it into your calendar app to add this event.<br>This is an automated invitation from SecureOps.</p>
+        </div>`;
+      await mailer.sendMail({
+        to: m.email,
+        subject: `[ISSC] Meeting Invitation: ${meeting.title} — ${dateStr}`,
+        html,
+        attachments: [{
+          filename: 'issc-meeting.ics',
+          content:  ics,
+          contentType: 'text/calendar; charset=utf-8; method=REQUEST',
+        }],
+      });
+    }
+  } catch (e) { logger.error('sendMeetingInvitations error:', e.message); }
+}
+
+// ── Send minutes/decisions notification ───────────────────────
+async function sendMeetingMinutes(meeting) {
+  const memberIds = Array.isArray(meeting.member_ids) ? meeting.member_ids : [];
+  if (!memberIds.length) return;
+  if (!meeting.minutes && !meeting.decisions) return;
+  try {
+    const ids = memberIds.filter(id => /^[0-9a-f-]{36}$/i.test(id));
+    if (!ids.length) return;
+    const r = await db.query(
+      `SELECT full_name, email FROM issc_members WHERE id = ANY($1::uuid[]) AND email IS NOT NULL AND email <> ''`,
+      [ids]
+    );
+    if (!r.rows.length) return;
+    const mailer  = require('../services/mailer');
+    const dateStr = new Date(meeting.meeting_date).toLocaleDateString('en-GB', { weekday:'long', year:'numeric', month:'long', day:'numeric' });
+    for (const m of r.rows) {
+      const html = `
+        <div style="font-family:sans-serif;max-width:600px">
+          <h2 style="color:#10b981;margin-bottom:4px">ISSC Meeting — Minutes &amp; Decisions</h2>
+          <p style="color:#666;font-size:13px;margin-top:0">Official record for your evidence files</p>
+          <p>Dear ${m.full_name},</p>
+          <p>Minutes and decisions have been recorded for the following ISSC meeting:</p>
+          <div style="background:#f0fdf4;padding:12px 16px;border-radius:8px;margin:16px 0;border-left:4px solid #3b82f6">
+            <div style="font-weight:700;color:#1e40af;font-size:14px">${meeting.title}</div>
+            <div style="font-size:12px;color:#6b7280;margin-top:3px">${dateStr}${meeting.location ? ` &middot; ${meeting.location}` : ''}${meeting.chair ? ` &middot; Chair: ${meeting.chair}` : ''}</div>
+          </div>
+          ${meeting.minutes ? `
+          <div style="margin:20px 0">
+            <div style="font-weight:700;font-size:11px;text-transform:uppercase;letter-spacing:0.07em;color:#6b7280;margin-bottom:8px">Minutes / Notes</div>
+            <div style="background:#f6f8fa;padding:14px 16px;border-radius:6px;font-size:13px;white-space:pre-wrap;line-height:1.7;border-left:3px solid #10b981">${meeting.minutes}</div>
+          </div>` : ''}
+          ${meeting.decisions ? `
+          <div style="margin:20px 0">
+            <div style="font-weight:700;font-size:11px;text-transform:uppercase;letter-spacing:0.07em;color:#6b7280;margin-bottom:8px">Decisions Made</div>
+            <div style="background:#fffbeb;padding:14px 16px;border-radius:6px;font-size:13px;white-space:pre-wrap;line-height:1.7;border-left:3px solid #f59e0b">${meeting.decisions}</div>
+          </div>` : ''}
+          ${meeting.action_items ? `
+          <div style="margin:20px 0">
+            <div style="font-weight:700;font-size:11px;text-transform:uppercase;letter-spacing:0.07em;color:#6b7280;margin-bottom:8px">Action Items</div>
+            <div style="background:#f6f8fa;padding:14px 16px;border-radius:6px;font-size:13px;white-space:pre-wrap;line-height:1.7;border-left:3px solid #6b7280">${meeting.action_items}</div>
+          </div>` : ''}
+          <hr style="border:none;border-top:1px solid #e5e7eb;margin:24px 0">
+          <p style="color:#888;font-size:12px">This email serves as an official evidence record of ISSC decisions.<br>Automated notification from SecureOps &middot; ${new Date().toLocaleString()}</p>
+        </div>`;
+      await mailer.sendMail({
+        to: m.email,
+        subject: `[ISSC] Meeting Minutes & Decisions: ${meeting.title} — ${dateStr}`,
+        html,
+      });
+    }
+  } catch (e) { logger.error('sendMeetingMinutes error:', e.message); }
+}
 
 // ── Risk Appetite & Tolerance ─────────────────────────────────
 
@@ -144,27 +277,39 @@ router.get('/meetings', auth, async (req, res) => {
 router.post('/meetings', auth, requireRole('admin', 'analyst'), async (req, res) => {
   const { title, meeting_date, meeting_type, status, location, chair,
           quorum_met, attendees, agenda, minutes, decisions,
-          action_items, next_meeting_date } = req.body;
+          action_items, next_meeting_date, member_ids } = req.body;
   if (!title || !meeting_date) return res.status(400).json({ error: 'title and meeting_date required' });
   try {
     const r = await db.query(`
       INSERT INTO issc_meetings
         (title, meeting_date, meeting_type, status, location, chair, quorum_met,
-         attendees, agenda, minutes, decisions, action_items, next_meeting_date, created_by)
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14) RETURNING *
+         attendees, agenda, minutes, decisions, action_items, next_meeting_date,
+         member_ids, created_by)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15) RETURNING *
     `, [title, meeting_date, meeting_type||'regular', status||'scheduled',
         location||null, chair||null, quorum_met??null, attendees||null,
         agenda||null, minutes||null, decisions||null, action_items||null,
-        next_meeting_date||null, req.user.id]);
-    res.status(201).json(r.rows[0]);
+        next_meeting_date||null, JSON.stringify(member_ids||[]), req.user.id]);
+    const meeting = r.rows[0];
+
+    // Send calendar invitations to selected members
+    if (member_ids?.length) {
+      sendMeetingInvitations(meeting, member_ids).catch(() => {});
+    }
+
+    res.status(201).json(meeting);
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 router.put('/meetings/:id', auth, requireRole('admin', 'analyst'), async (req, res) => {
   const { title, meeting_date, meeting_type, status, location, chair,
           quorum_met, attendees, agenda, minutes, decisions,
-          action_items, next_meeting_date } = req.body;
+          action_items, next_meeting_date, member_ids } = req.body;
   try {
+    // Fetch old values to detect minutes/decisions changes
+    const prev = await db.query('SELECT minutes, decisions, member_ids FROM issc_meetings WHERE id=$1', [req.params.id]);
+    const old  = prev.rows[0];
+
     const r = await db.query(`
       UPDATE issc_meetings SET
         title             = COALESCE($2,  title),
@@ -180,14 +325,25 @@ router.put('/meetings/:id', auth, requireRole('admin', 'analyst'), async (req, r
         decisions         = COALESCE($12, decisions),
         action_items      = COALESCE($13, action_items),
         next_meeting_date = COALESCE($14, next_meeting_date),
+        member_ids        = COALESCE($15, member_ids),
         updated_at        = NOW()
       WHERE id = $1 RETURNING *
     `, [req.params.id, title||null, meeting_date||null, meeting_type||null,
         status||null, location||null, chair||null, quorum_met??null,
         attendees||null, agenda||null, minutes||null, decisions||null,
-        action_items||null, next_meeting_date||null]);
+        action_items||null, next_meeting_date||null,
+        member_ids !== undefined ? JSON.stringify(member_ids) : null]);
     if (!r.rows.length) return res.status(404).json({ error: 'Meeting not found' });
-    res.json(r.rows[0]);
+    const meeting = r.rows[0];
+
+    // If minutes or decisions were newly added/changed, notify members with the evidence email
+    const minutesChanged   = minutes   && minutes   !== (old?.minutes   || '');
+    const decisionsChanged = decisions && decisions !== (old?.decisions  || '');
+    if (minutesChanged || decisionsChanged) {
+      sendMeetingMinutes(meeting).catch(() => {});
+    }
+
+    res.json(meeting);
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
