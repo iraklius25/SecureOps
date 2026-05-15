@@ -15,6 +15,16 @@ const STATUS_LABELS = {
   non_compliant: 'Non-Compliant', not_assessed: 'Not Assessed',
 };
 
+/* ─── Gap Assessment framework list ─────────────────── */
+const GAP_FRAMEWORKS = [
+  { id: 'ISO27001', label: 'ISO 27001' },
+  { id: 'GDPR',     label: 'GDPR' },
+  { id: 'ISO22301', label: 'ISO 22301' },
+  { id: 'NISTCSF',  label: 'NIST CSF' },
+  { id: 'PCIDSS',   label: 'PCI DSS' },
+  { id: 'SOC2',     label: 'SOC 2' },
+];
+
 /* ─── Gap Assessment constants ───────────────────────── */
 const PIE_COLORS = [
   '#22c55e','#ef4444','#eab308','#38bdf8',
@@ -345,11 +355,11 @@ function AddChartModal({ sheets, onAdd, onClose }) {
 }
 
 /* ─── GapAssessmentEditor ────────────────────────────── */
-function GapAssessmentEditor({ assessment, onBack, onSaved }) {
+function GapAssessmentEditor({ assessment, onBack, onSaved, framework = 'ISO27001', frameworkLabel = 'ISO 27001' }) {
   const isNew = !assessment.id;
   const idRef = useRef(assessment.id || null);
 
-  const [name,          setName]          = useState(assessment.name || 'New ISO Gap Assessment');
+  const [name,          setName]          = useState(assessment.name || `New ${frameworkLabel} Gap Assessment`);
   const [data,          setData]          = useState(
     assessment.data || {
       sheets: [{ id:uid(), name:'Sheet 1', columns:[...DEFAULT_COLUMNS], rows:[] }],
@@ -368,9 +378,9 @@ function GapAssessmentEditor({ assessment, onBack, onSaved }) {
     setSaving(true);
     try {
       if (idRef.current) {
-        await api.put(`/compliance/gap/${idRef.current}`, { name, data });
+        await api.put(`/compliance/gap/${idRef.current}`, { name, data, framework });
       } else {
-        const r = await api.post('/compliance/gap', { name, data });
+        const r = await api.post('/compliance/gap', { name, data, framework });
         idRef.current = r.data.id;
       }
       setSavedOk(true);
@@ -379,6 +389,21 @@ function GapAssessmentEditor({ assessment, onBack, onSaved }) {
     } catch(e) {
       alert('Save failed: ' + (e.response?.data?.error || e.message));
     } finally { setSaving(false); }
+  };
+
+  /* ── export to Excel ── */
+  const exportExcel = () => {
+    try {
+      const wb = XLSX.utils.book_new();
+      (data.sheets || []).forEach(sheet => {
+        const wsData = [sheet.columns || [], ...(sheet.rows || [])];
+        const ws = XLSX.utils.aoa_to_sheet(wsData);
+        XLSX.utils.book_append_sheet(wb, ws, (sheet.name || 'Sheet').slice(0, 31));
+      });
+      XLSX.writeFile(wb, `${name.replace(/[^a-z0-9]/gi, '_').toLowerCase()}.xlsx`);
+    } catch (e) {
+      alert('Export failed: ' + e.message);
+    }
   };
 
   /* ── sheet helpers ── */
@@ -437,6 +462,9 @@ function GapAssessmentEditor({ assessment, onBack, onSaved }) {
         </div>
         <div style={{ display:'flex', alignItems:'center', gap:8 }}>
           {savedOk && <span style={{ fontSize:12, color:'var(--low)' }}>✓ Saved</span>}
+          <button className="btn btn-secondary" onClick={exportExcel} title="Export all sheets as Excel">
+            ⬇ Export Excel
+          </button>
           <button className="btn btn-primary" onClick={save} disabled={saving}>
             {saving ? 'Saving…' : 'Save'}
           </button>
@@ -528,7 +556,7 @@ function GapAssessmentEditor({ assessment, onBack, onSaved }) {
 }
 
 /* ─── GapAssessmentSection (list + import) ───────────── */
-function GapAssessmentSection() {
+function GapAssessmentSection({ framework = 'ISO27001', frameworkLabel = 'ISO 27001' }) {
   const [assessments, setAssessments] = useState([]);
   const [loading,     setLoading]     = useState(true);
   const [editing,     setEditing]     = useState(null); // null = list, object = editor
@@ -536,11 +564,11 @@ function GapAssessmentSection() {
 
   const load = useCallback(() => {
     setLoading(true);
-    api.get('/compliance/gap')
+    api.get(`/compliance/gap?framework=${framework}`)
       .then(r => setAssessments(r.data))
       .catch(console.error)
       .finally(() => setLoading(false));
-  }, []);
+  }, [framework]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -589,6 +617,8 @@ function GapAssessmentSection() {
     return (
       <GapAssessmentEditor
         assessment={editing}
+        framework={framework}
+        frameworkLabel={frameworkLabel}
         onBack={() => { setEditing(null); load(); }}
         onSaved={load}
       />
@@ -603,7 +633,7 @@ function GapAssessmentSection() {
         <button className="btn btn-primary" onClick={() => fileInputRef.current.click()}>
           ↑ Import Excel (.xlsx / .xls / .csv)
         </button>
-        <button className="btn btn-secondary" onClick={() => setEditing({ name:'New ISO Gap Assessment', data:null })}>
+        <button className="btn btn-secondary" onClick={() => setEditing({ name:`New ${frameworkLabel} Gap Assessment`, data:null })}>
           + New Blank Assessment
         </button>
       </div>
@@ -642,11 +672,12 @@ function GapAssessmentSection() {
 
 /* ─── Main Compliance Page ───────────────────────────── */
 export default function Compliance() {
-  const [posture,   setPosture]   = useState(null);
-  const [framework, setFramework] = useState('NIST_CSF');
-  const [loading,   setLoading]   = useState(true);
-  const [expanded,  setExpanded]  = useState(null);
-  const [mainTab,   setMainTab]   = useState('posture'); // 'posture' | 'gap'
+  const [posture,       setPosture]       = useState(null);
+  const [framework,     setFramework]     = useState('NIST_CSF');
+  const [loading,       setLoading]       = useState(true);
+  const [expanded,      setExpanded]      = useState(null);
+  const [mainTab,       setMainTab]       = useState('posture'); // 'posture' | 'gap'
+  const [gapFramework,  setGapFramework]  = useState('ISO27001');
 
   useEffect(() => {
     api.get('/compliance/posture')
@@ -680,7 +711,7 @@ export default function Compliance() {
           Control Posture
         </button>
         <button className={`tab-btn ${mainTab==='gap'?'active':''}`} onClick={() => setMainTab('gap')}>
-          ISO Gap Assessment
+          Gap Assessment
         </button>
       </div>
 
@@ -763,8 +794,24 @@ export default function Compliance() {
         </>
       )}
 
-      {/* ── ISO Gap Assessment section ── */}
-      {mainTab === 'gap' && <GapAssessmentSection />}
+      {/* ── Gap Assessment section ── */}
+      {mainTab === 'gap' && (
+        <div>
+          <div className="tabs" style={{ marginBottom: 20 }}>
+            {GAP_FRAMEWORKS.map(f => (
+              <button key={f.id} className={`tab-btn ${gapFramework === f.id ? 'active' : ''}`}
+                onClick={() => setGapFramework(f.id)}>
+                {f.label}
+              </button>
+            ))}
+          </div>
+          <GapAssessmentSection
+            key={gapFramework}
+            framework={gapFramework}
+            frameworkLabel={GAP_FRAMEWORKS.find(f => f.id === gapFramework)?.label || gapFramework}
+          />
+        </div>
+      )}
     </div>
   );
 }

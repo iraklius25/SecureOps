@@ -58,29 +58,36 @@ router.delete('/documents/:docId', auth, requireRole('admin', 'analyst'), async 
 
 /* ── Assessment CRUD ──────────────────────────────────────────────── */
 
-// GET /api/maturity?framework=ISMS|ISO42001
+// GET /api/maturity?framework=ISMS&org_id=<uuid|none>
 router.get('/', auth, async (req, res) => {
   try {
-    const { framework } = req.query;
-    const q = framework
-      ? 'SELECT * FROM maturity_assessments WHERE framework=$1 ORDER BY updated_at DESC'
-      : 'SELECT * FROM maturity_assessments ORDER BY updated_at DESC';
-    const r = await db.query(q, framework ? [framework] : []);
+    const { framework, org_id } = req.query;
+    const conditions = [];
+    const params = [];
+    if (framework) { params.push(framework); conditions.push(`framework=$${params.length}`); }
+    if (org_id === 'none') {
+      conditions.push('org_id IS NULL');
+    } else if (org_id) {
+      params.push(org_id);
+      conditions.push(`org_id=$${params.length}`);
+    }
+    const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
+    const r = await db.query(`SELECT * FROM maturity_assessments ${where} ORDER BY updated_at DESC`, params);
     res.json(r.rows);
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 // POST /api/maturity
 router.post('/', auth, requireRole('admin', 'analyst'), async (req, res) => {
-  const { framework, name, description, data } = req.body;
+  const { framework, name, description, data, org_id } = req.body;
   if (!framework || !name) return res.status(400).json({ error: 'framework and name are required' });
   const VALID_FRAMEWORKS = ['ISMS', 'ISO42001', 'NISTCSF', 'PCIDSS', 'SOC2', 'ISO22301', 'GDPR'];
   if (!VALID_FRAMEWORKS.includes(framework)) return res.status(400).json({ error: 'Invalid framework' });
   try {
     const r = await db.query(
-      `INSERT INTO maturity_assessments (framework, name, description, data, created_by)
-       VALUES ($1,$2,$3,$4,$5) RETURNING *`,
-      [framework, name.trim(), description || '', data || { domains: {} }, req.user.id]
+      `INSERT INTO maturity_assessments (framework, name, description, data, org_id, created_by)
+       VALUES ($1,$2,$3,$4,$5,$6) RETURNING *`,
+      [framework, name.trim(), description || '', data || { domains: {} }, org_id || null, req.user.id]
     );
     res.status(201).json(r.rows[0]);
   } catch (e) { res.status(500).json({ error: e.message }); }
@@ -97,12 +104,12 @@ router.get('/:id', auth, async (req, res) => {
 
 // PUT /api/maturity/:id
 router.put('/:id', auth, requireRole('admin', 'analyst'), async (req, res) => {
-  const { name, description, data } = req.body;
+  const { name, description, data, org_id } = req.body;
   try {
     const r = await db.query(
-      `UPDATE maturity_assessments SET name=$1, description=$2, data=$3, updated_at=NOW()
-       WHERE id=$4 RETURNING *`,
-      [name, description || '', data, req.params.id]
+      `UPDATE maturity_assessments SET name=$1, description=$2, data=$3, org_id=$4, updated_at=NOW()
+       WHERE id=$5 RETURNING *`,
+      [name, description || '', data, org_id || null, req.params.id]
     );
     if (!r.rows.length) return res.status(404).json({ error: 'Not found' });
     res.json(r.rows[0]);

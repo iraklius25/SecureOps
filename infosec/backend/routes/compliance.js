@@ -91,25 +91,28 @@ router.delete('/risks/:riskId/controls/:controlId', auth, requireRole('admin','a
 
 /* ── ISO Gap Assessments ──────────────────────────── */
 
-// GET /api/compliance/gap  — list all assessments
+// GET /api/compliance/gap  — list assessments (optionally filtered by framework)
 router.get('/gap', auth, async (req, res) => {
   try {
-    const r = await db.query(
-      `SELECT id, name, description, created_at, updated_at FROM gap_assessments ORDER BY updated_at DESC`
-    );
+    const { framework } = req.query;
+    const params = [];
+    let q = `SELECT id, name, description, framework, created_at, updated_at FROM gap_assessments`;
+    if (framework) { params.push(framework); q += ` WHERE framework=$1`; }
+    q += ` ORDER BY updated_at DESC`;
+    const r = await db.query(q, params);
     res.json(r.rows);
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 // POST /api/compliance/gap  — create new assessment
 router.post('/gap', auth, requireRole('admin', 'analyst'), async (req, res) => {
-  const { name, description = '', data = { sheets: [], charts: [] } } = req.body;
+  const { name, description = '', data = { sheets: [], charts: [] }, framework = 'ISO27001' } = req.body;
   if (!name) return res.status(400).json({ error: 'name required' });
   try {
     const r = await db.query(
-      `INSERT INTO gap_assessments (name, description, data, created_by)
-       VALUES ($1, $2, $3, $4) RETURNING *`,
-      [name, description, JSON.stringify(data), req.user.id]
+      `INSERT INTO gap_assessments (name, description, data, framework, created_by)
+       VALUES ($1, $2, $3, $4, $5) RETURNING *`,
+      [name, description, JSON.stringify(data), framework, req.user.id]
     );
     res.json(r.rows[0]);
   } catch (e) { res.status(500).json({ error: e.message }); }

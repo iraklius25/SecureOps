@@ -26,6 +26,88 @@ function scoreColor(s) {
   return s >= 20 ? 'var(--critical)' : s >= 12 ? 'var(--high)' : s >= 6 ? 'var(--medium)' : 'var(--low)';
 }
 
+/* ─── Risk Detail Modal ───────────────────────────────── */
+function RiskDetailModal({ risk, onClose }) {
+  const sc = scoreColor(risk.risk_score);
+  const AI_COLORS = { unacceptable:'#ef4444', high:'#f97316', limited:'#f59e0b', minimal:'#10b981' };
+
+  const Field = ({ label, value, mono }) => !value && value !== 0 ? null : (
+    <div style={{ marginBottom: 12 }}>
+      <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--text3)', textTransform: 'uppercase',
+                    letterSpacing: '0.07em', marginBottom: 3 }}>{label}</div>
+      <div style={{ fontSize: 13, color: 'var(--text1)', fontFamily: mono ? 'monospace' : 'inherit', lineHeight: 1.5 }}>{value}</div>
+    </div>
+  );
+
+  return (
+    <div className="modal-overlay" onClick={e => e.target === e.currentTarget && onClose()}>
+      <div className="modal" style={{ maxWidth: 660 }}>
+        <div className="modal-header">
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <h2 style={{ marginBottom: 8 }}>{risk.title}</h2>
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+              <div className={`risk-score ${risk.risk_score >= 20 ? 'risk-critical' : risk.risk_score >= 12 ? 'risk-high' : risk.risk_score >= 6 ? 'risk-medium' : 'risk-low'}`}>
+                {risk.risk_score}
+              </div>
+              <span className={`badge badge-${risk.risk_level}`}>{risk.risk_level}</span>
+              <span style={{ fontSize: 12, color: 'var(--text3)' }}>L{risk.likelihood} × I{risk.impact}</span>
+              {risk.category && <span style={{ fontSize: 11, padding: '2px 8px', borderRadius: 10, background: 'var(--bg3)', color: 'var(--text2)', border: '1px solid var(--border)' }}>{risk.category}</span>}
+              {risk.status && <span style={{ fontSize: 11, padding: '2px 8px', borderRadius: 10, background: 'var(--bg3)', color: 'var(--text2)', border: '1px solid var(--border)' }}>{risk.status}</span>}
+            </div>
+          </div>
+          <button className="modal-close" onClick={onClose}>✕</button>
+        </div>
+
+        <div className="modal-body" style={{ maxHeight: '65vh', overflowY: 'auto' }}>
+          {risk.description && (
+            <div style={{ padding: '12px 14px', background: 'var(--bg3)', borderRadius: 8, marginBottom: 20,
+                          fontSize: 13, color: 'var(--text2)', lineHeight: 1.7, borderLeft: `3px solid ${sc}` }}>
+              {risk.description}
+            </div>
+          )}
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0 28px' }}>
+            <div>
+              <Field label="Likelihood"  value={`${risk.likelihood} / 5`} />
+              <Field label="Impact"      value={`${risk.impact} / 5`} />
+              <Field label="Risk Score"  value={`${risk.risk_score} / 25`} />
+              <Field label="Risk Level"  value={risk.risk_level?.toUpperCase()} />
+              <Field label="Treatment"   value={risk.treatment} />
+            </div>
+            <div>
+              <Field label="Category"   value={risk.category} />
+              <Field label="Owner"      value={risk.owner} />
+              <Field label="Review Date" value={risk.review_date ? new Date(risk.review_date).toLocaleDateString('en-GB') : null} />
+              <Field label="Asset"      value={risk.ip_address || risk.hostname} mono />
+              <Field label="Created"    value={risk.created_at ? new Date(risk.created_at).toLocaleDateString('en-GB') : null} />
+            </div>
+          </div>
+
+          {risk.notes && (
+            <div style={{ marginTop: 4 }}>
+              <Field label="Notes" value={risk.notes} />
+            </div>
+          )}
+
+          {risk.eu_ai_act_tier && (
+            <div style={{ marginTop: 12, padding: '10px 14px', borderRadius: 8,
+                          background: `${AI_COLORS[risk.eu_ai_act_tier]}15`,
+                          border: `1px solid ${AI_COLORS[risk.eu_ai_act_tier]}40` }}>
+              <span style={{ fontSize: 12, fontWeight: 700, color: AI_COLORS[risk.eu_ai_act_tier] }}>
+                EU AI Act — {risk.eu_ai_act_tier.charAt(0).toUpperCase() + risk.eu_ai_act_tier.slice(1)} risk tier
+              </span>
+            </div>
+          )}
+        </div>
+
+        <div className="modal-footer">
+          <button className="btn btn-secondary" onClick={onClose}>Close</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 /* ─── Compliance Controls Modal ───────────────────────── */
 function RiskControlsModal({ risk, onClose }) {
   const [mapped,    setMapped]    = useState([]);
@@ -372,6 +454,7 @@ function RiskHeatmap({ risks }) {
 export function Risks() {
   const [risks,       setRisks]       = useState([]);
   const [modal,       setModal]       = useState(false);
+  const [detailRisk,  setDetailRisk]  = useState(null);
   const [ctrlRisk,    setCtrlRisk]    = useState(null);
   const [tab,         setTab]         = useState('list'); // 'list' | 'heatmap'
   const [form,        setForm]        = useState({
@@ -471,7 +554,8 @@ export function Risks() {
                     (!filterCat    || (r.category || '') === filterCat) &&
                     (!filterStatus || (r.status   || 'open') === filterStatus)
                   ).map(r => (
-                    <tr key={r.id}>
+                    <tr key={r.id} style={{ cursor: 'pointer' }} onClick={() => setDetailRisk(r)}
+                      title="Click to view risk details">
                       <td><div className={`risk-score ${scoreColorClass(r.risk_score)}`}>{r.risk_score}</div></td>
                       <td style={{ maxWidth: 260 }}>
                         <div style={{ fontWeight: 500 }}>{r.title}</div>
@@ -501,7 +585,7 @@ export function Risks() {
                           </span>
                         ) : <span style={{ color:'var(--text3)', fontSize:12 }}>—</span>}
                       </td>
-                      <td>
+                      <td onClick={e => e.stopPropagation()}>
                         <select
                           value={r.treatment}
                           onChange={e => update(r.id, { treatment: e.target.value })}
@@ -511,7 +595,7 @@ export function Risks() {
                         </select>
                       </td>
                       <td className="mono" style={{ color: 'var(--info)', fontSize: 12 }}>{r.ip_address || '—'}</td>
-                      <td>
+                      <td onClick={e => e.stopPropagation()}>
                         <select
                           value={r.status || 'open'}
                           onChange={e => update(r.id, { status: e.target.value })}
@@ -520,7 +604,7 @@ export function Risks() {
                           {['open','in_progress','closed'].map(s => <option key={s}>{s}</option>)}
                         </select>
                       </td>
-                      <td>
+                      <td onClick={e => e.stopPropagation()}>
                         <button
                           className="btn btn-secondary btn-sm"
                           onClick={() => setCtrlRisk(r)}
@@ -601,6 +685,11 @@ export function Risks() {
             </form>
           </div>
         </div>
+      )}
+
+      {/* ── Risk Detail Modal ── */}
+      {detailRisk && (
+        <RiskDetailModal risk={detailRisk} onClose={() => setDetailRisk(null)} />
       )}
 
       {/* ── Compliance Controls Modal ── */}

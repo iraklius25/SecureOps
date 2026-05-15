@@ -658,14 +658,20 @@ function AssessmentEditor({ assessment, framework, onBack, onSaved }) {
   const [name,        setName]        = useState(assessment.name);
   const [description, setDescription] = useState(assessment.description || '');
   const [data,        setData]        = useState(assessment.data || { domains: {} });
+  const [orgId,       setOrgId]       = useState(assessment.org_id || '');
+  const [orgs,        setOrgs]        = useState([]);
   const [saving,      setSaving]      = useState(false);
   const [saveMsg,     setSaveMsg]     = useState('');
   const [view,        setView]        = useState('clauses'); // 'clauses' | 'annexa'
 
+  useEffect(() => {
+    api.get('/certifications/organizations').then(r => setOrgs(r.data || [])).catch(() => {});
+  }, []);
+
   const save = async () => {
     setSaving(true); setSaveMsg('');
     try {
-      const r = await api.put(`/maturity/${assessment.id}`, { name, description, data });
+      const r = await api.put(`/maturity/${assessment.id}`, { name, description, data, org_id: orgId || null });
       setSaveMsg('Saved');
       onSaved(r.data);
       setTimeout(() => setSaveMsg(''), 2000);
@@ -693,6 +699,15 @@ function AssessmentEditor({ assessment, framework, onBack, onSaved }) {
         <div style={{ flex: 1 }}>
           <input value={name} onChange={e => setName(e.target.value)} style={{ display: 'block', width: '100%', fontSize: 17, fontWeight: 600, background: 'transparent', border: 'none', borderBottom: '1px solid var(--border)', color: 'var(--text1)', paddingBottom: 4, marginBottom: 5, outline: 'none' }} />
           <input value={description} onChange={e => setDescription(e.target.value)} placeholder="Assessment description (optional)" style={{ display: 'block', width: '100%', fontSize: 13, background: 'transparent', border: 'none', borderBottom: '1px solid var(--border)', color: 'var(--text2)', paddingBottom: 2, outline: 'none' }} />
+          {orgs.length > 0 && (
+            <div style={{ marginTop: 8, display: 'flex', alignItems: 'center', gap: 8 }}>
+              <span style={{ fontSize: 11, color: 'var(--text3)', whiteSpace: 'nowrap' }}>Organization</span>
+              <select value={orgId} onChange={e => setOrgId(e.target.value)} style={{ fontSize: 12, padding: '4px 8px', borderRadius: 5, border: '1px solid var(--border)', background: 'var(--bg3)', color: 'var(--text1)' }}>
+                <option value="">None</option>
+                {orgs.map(o => <option key={o.id} value={o.id}>{o.name}</option>)}
+              </select>
+            </div>
+          )}
         </div>
         <div style={{ textAlign: 'center', flexShrink: 0 }}>
           <div style={{ fontSize: 9, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 2 }}>Overall</div>
@@ -761,16 +776,26 @@ function AssessmentList({ framework, onSelect }) {
   const [loading,     setLoading]     = useState(true);
   const [showCreate,  setShowCreate]  = useState(false);
   const [newName,     setNewName]     = useState('');
+  const [newOrgId,    setNewOrgId]    = useState('');
+  const [orgFilter,   setOrgFilter]   = useState('');
+  const [orgs,        setOrgs]        = useState([]);
   const [creating,    setCreating]    = useState(false);
   const [err,         setErr]         = useState('');
 
+  useEffect(() => {
+    api.get('/certifications/organizations').then(r => setOrgs(r.data || [])).catch(() => {});
+  }, []);
+
   const load = useCallback(() => {
     setLoading(true);
-    api.get(`/maturity?framework=${framework}`)
+    const params = new URLSearchParams({ framework });
+    if (orgFilter === 'none') params.set('org_id', 'none');
+    else if (orgFilter)       params.set('org_id', orgFilter);
+    api.get(`/maturity?${params}`)
       .then(r => setAssessments(r.data))
       .catch(() => {})
       .finally(() => setLoading(false));
-  }, [framework]);
+  }, [framework, orgFilter]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -778,7 +803,10 @@ function AssessmentList({ framework, onSelect }) {
     if (!newName.trim()) return;
     setCreating(true); setErr('');
     try {
-      const r = await api.post('/maturity', { framework, name: newName.trim(), description: '', data: { domains: {} } });
+      const r = await api.post('/maturity', {
+        framework, name: newName.trim(), description: '', data: { domains: {} },
+        org_id: newOrgId || null,
+      });
       onSelect(r.data);
     } catch (ex) { setErr(ex.response?.data?.error || 'Create failed'); }
     finally { setCreating(false); }
@@ -797,26 +825,43 @@ function AssessmentList({ framework, onSelect }) {
 
   return (
     <div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
-        <div style={{ fontSize: 13, color: 'var(--text3)' }}>{assessments.length} assessment{assessments.length !== 1 ? 's' : ''}</div>
-        <button className="btn btn-primary" onClick={() => { setShowCreate(true); setNewName(''); setErr(''); }}>+ New Blank Assessment</button>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14, flexWrap: 'wrap', gap: 8 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <div style={{ fontSize: 13, color: 'var(--text3)' }}>{assessments.length} assessment{assessments.length !== 1 ? 's' : ''}</div>
+          {orgs.length > 0 && (
+            <select value={orgFilter} onChange={e => setOrgFilter(e.target.value)} style={{ fontSize: 12, padding: '4px 8px', borderRadius: 5, border: '1px solid var(--border)', background: 'var(--bg3)', color: 'var(--text2)' }}>
+              <option value="">All organizations</option>
+              <option value="none">No organization</option>
+              {orgs.map(o => <option key={o.id} value={o.id}>{o.name}</option>)}
+            </select>
+          )}
+        </div>
+        <button className="btn btn-primary" onClick={() => { setShowCreate(true); setNewName(''); setNewOrgId(''); setErr(''); }}>+ New Blank Assessment</button>
       </div>
 
       {showCreate && (
         <div className="card" style={{ padding: 16, marginBottom: 14 }}>
           <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 10 }}>New {fw.label} Assessment</div>
           {err && <div className="alert alert-error" style={{ marginBottom: 8 }}>{err}</div>}
-          <div style={{ display: 'flex', gap: 8 }}>
-            <input
-              autoFocus
-              value={newName}
-              onChange={e => setNewName(e.target.value)}
-              onKeyDown={e => { if (e.key === 'Enter') create(); if (e.key === 'Escape') setShowCreate(false); }}
-              placeholder={`e.g. Q2 2026 ${fw.label} Assessment`}
-              style={{ flex: 1, padding: '7px 10px', borderRadius: 5, border: '1px solid var(--border)', background: 'var(--bg3)', color: 'var(--text1)', fontSize: 13 }}
-            />
-            <button className="btn btn-primary" onClick={create} disabled={creating || !newName.trim()}>{creating ? 'Creating…' : 'Create'}</button>
-            <button className="btn btn-secondary" onClick={() => setShowCreate(false)}>Cancel</button>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <input
+                autoFocus
+                value={newName}
+                onChange={e => setNewName(e.target.value)}
+                onKeyDown={e => { if (e.key === 'Enter') create(); if (e.key === 'Escape') setShowCreate(false); }}
+                placeholder={`e.g. Q2 2026 ${fw.label} Assessment`}
+                style={{ flex: 1, padding: '7px 10px', borderRadius: 5, border: '1px solid var(--border)', background: 'var(--bg3)', color: 'var(--text1)', fontSize: 13 }}
+              />
+              <button className="btn btn-primary" onClick={create} disabled={creating || !newName.trim()}>{creating ? 'Creating…' : 'Create'}</button>
+              <button className="btn btn-secondary" onClick={() => setShowCreate(false)}>Cancel</button>
+            </div>
+            {orgs.length > 0 && (
+              <select value={newOrgId} onChange={e => setNewOrgId(e.target.value)} style={{ fontSize: 13, padding: '7px 10px', borderRadius: 5, border: '1px solid var(--border)', background: 'var(--bg3)', color: 'var(--text1)', maxWidth: 340 }}>
+                <option value="">No organization linked</option>
+                {orgs.map(o => <option key={o.id} value={o.id}>{o.name}</option>)}
+              </select>
+            )}
           </div>
         </div>
       )}
@@ -841,6 +886,7 @@ function AssessmentList({ framework, onSelect }) {
                 <div style={{ flex: 1 }}>
                   <div style={{ fontWeight: 600, fontSize: 14, color: 'var(--text1)' }}>{a.name}</div>
                   {a.description && <div style={{ fontSize: 12, color: 'var(--text3)', marginTop: 2 }}>{a.description}</div>}
+                  {a.org_id && (() => { const org = orgs.find(o => o.id === a.org_id); return org ? <div style={{ fontSize: 11, color: 'var(--accent)', marginTop: 3 }}>🏢 {org.name}</div> : null; })()}
                   <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 4 }}>Updated {new Date(a.updated_at).toLocaleDateString()}</div>
                 </div>
                 {avg > 0 ? (
