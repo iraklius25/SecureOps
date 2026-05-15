@@ -1,9 +1,37 @@
 /**
  * Notifier Service
- * Handles in-app notifications + Slack/Teams webhook alerts
+ * Handles in-app notifications + Slack/Teams webhook alerts + email
  */
 const db     = require('../db');
 const logger = require('./logger');
+
+// ── Generic email helper — checks smtp_enabled + per-trigger key ──
+async function notifyEmail(triggerKey, title, message, type = 'info') {
+  try {
+    const r = await db.query(
+      `SELECT key, value FROM settings WHERE key IN ('smtp_host','smtp_from','smtp_to','smtp_enabled',$1)`,
+      [triggerKey]
+    );
+    const cfg = Object.fromEntries(r.rows.map(row => [row.key, row.value]));
+    if (cfg.smtp_enabled !== 'true') return;
+    if (!cfg.smtp_host || !cfg.smtp_from || !cfg.smtp_to) return;
+    if (cfg[triggerKey] !== 'true') return;
+
+    const colorMap = { critical:'#d73a49', high:'#e36209', warning:'#e36209', success:'#3fb950', info:'#0366d6' };
+    const color = colorMap[type] || colorMap.info;
+    const html = `
+      <div style="font-family:sans-serif;max-width:600px">
+        <h2 style="color:${color};margin-bottom:8px">${title}</h2>
+        <div style="color:#444;line-height:1.7;font-size:14px">${message.split(' · ').map(l => `<p style="margin:4px 0">${l}</p>`).join('')}</div>
+        <hr style="border:none;border-top:1px solid #eee;margin:16px 0">
+        <p style="color:#999;font-size:12px">Automated notification from SecureOps &middot; ${new Date().toLocaleString()}</p>
+      </div>`;
+    const mailer = require('./mailer');
+    await mailer.sendMail({ to: cfg.smtp_to, subject: `[SecureOps] ${title}`, html });
+  } catch (e) {
+    logger.error('notifyEmail error:', e.message);
+  }
+}
 
 // ── In-app: insert a notification row for each admin/analyst ──
 async function notifyInApp({ title, message, type = 'info', link, resource, resource_id }) {
@@ -75,10 +103,11 @@ async function notifyVuln(vuln, assetIp) {
     const title   = `${vuln.severity.toUpperCase()} Vulnerability: ${vuln.title}`;
     const message = `Found on ${assetIp}${vuln.cve_id ? ` (${vuln.cve_id})` : ''}. ALE: $${Math.round(vuln.ale || 0).toLocaleString()}`;
 
+    const evType = vuln.severity === 'critical' ? 'critical' : 'high';
     await Promise.all([
-      notifyInApp({ title, message, type: vuln.severity === 'critical' ? 'critical' : 'warning',
-                    resource: 'vulnerability', link: '/vulnerabilities' }),
-      notifyWebhook({ title, message, type: vuln.severity === 'critical' ? 'critical' : 'high' }),
+      notifyInApp({ title, message, type: evType, resource: 'vulnerability', link: '/vulnerabilities' }),
+      notifyWebhook({ title, message, type: evType }),
+      vuln.severity === 'critical' ? notifyEmail('email_on_critical', title, message, 'critical') : Promise.resolve(),
     ]);
   } catch (e) {
     logger.error('notifyVuln error:', e.message);
@@ -96,6 +125,7 @@ async function notifyScanComplete(scanJob, stats) {
     await Promise.all([
       notifyInApp({ title, message, type: 'success', resource: 'scan', link: '/scans' }),
       notifyWebhook({ title, message, type: 'success' }),
+      notifyEmail('email_on_scan_complete', title, message, 'success'),
     ]);
   } catch (e) {
     logger.error('notifyScanComplete error:', e.message);
@@ -117,6 +147,7 @@ async function notifyNewRisk(risk) {
     await Promise.all([
       notifyInApp({ title, message, type, resource: 'risk', resource_id: risk.id, link: '/risks' }),
       notifyWebhook({ title, message, type }),
+      notifyEmail('email_on_new_risk', title, message, type),
     ]);
   } catch (e) { logger.error('notifyNewRisk error:', e.message); }
 }
@@ -141,6 +172,7 @@ async function notifyApproval(approval, vulnTitle, severity, requestedByName, ve
     await Promise.all([
       notifyInApp({ title, message, type, resource: 'approval', resource_id: approval.id, link: '/approvals' }),
       notifyWebhook({ title, message, type }),
+      notifyEmail('email_on_approval', title, message, type),
     ]);
   } catch (e) { logger.error('notifyApproval error:', e.message); }
 }
@@ -155,6 +187,7 @@ async function notifyGrcActivity(entityType, entityName, action, detail) {
     await Promise.all([
       notifyInApp({ title, message, type: 'info', resource: 'grc', link: '/grc' }),
       notifyWebhook({ title, message, type: 'info' }),
+      notifyEmail('email_on_grc_activity', title, message, 'info'),
     ]);
   } catch (e) { logger.error('notifyGrcActivity error:', e.message); }
 }
@@ -174,6 +207,7 @@ async function notifyCertChange(cert, changeType, extraDetail) {
     await Promise.all([
       notifyInApp({ title, message, type: 'info', resource: 'certification', resource_id: cert.id, link: '/certifications' }),
       notifyWebhook({ title, message, type: 'info' }),
+      notifyEmail('email_on_cert_change', title, message, 'info'),
     ]);
   } catch (e) { logger.error('notifyCertChange error:', e.message); }
 }
@@ -197,6 +231,7 @@ async function notifyKpiChange(metricName, oldRag, newRag, detail) {
     await Promise.all([
       notifyInApp({ title, message, type, resource: 'metric', link: '/metrics' }),
       notifyWebhook({ title, message, type }),
+      notifyEmail('email_on_kpi_change', title, message, type),
     ]);
   } catch (e) { logger.error('notifyKpiChange error:', e.message); }
 }
@@ -218,6 +253,7 @@ async function notifyNewAsset(asset) {
     await Promise.all([
       notifyInApp({ title, message, type: 'info', resource: 'asset', resource_id: asset.id, link: '/assets' }),
       notifyWebhook({ title, message, type: 'info' }),
+      notifyEmail('email_on_new_asset', title, message, 'info'),
     ]);
   } catch (e) { logger.error('notifyNewAsset error:', e.message); }
 }
@@ -251,6 +287,7 @@ async function notifyOverdue() {
     await Promise.all([
       notifyInApp({ title, message, type: 'warning', resource: 'asset', link: '/assets' }),
       notifyWebhook({ title, message, type: 'warning' }),
+      notifyEmail('email_on_overdue', title, message, 'warning'),
     ]);
   } catch (e) { logger.error('notifyOverdue error:', e.message); }
 }
@@ -268,6 +305,7 @@ async function notifyRiskDelete(risk, deletedBy) {
     await Promise.all([
       notifyInApp({ title, message, type: 'warning', resource: 'risk', link: '/risks' }),
       notifyWebhook({ title, message, type: 'warning' }),
+      notifyEmail('email_on_risk_delete', title, message, 'warning'),
     ]);
   } catch (e) { logger.error('notifyRiskDelete error:', e.message); }
 }

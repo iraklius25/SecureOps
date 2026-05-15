@@ -39,6 +39,9 @@ router.get('/:id', auth, async (req, res) => {
 router.patch('/:id', auth, requireRole('admin','analyst'), async (req, res) => {
   const { status, assigned_to, due_date, notes, asset_value, exposure_factor, aro } = req.body;
   try {
+    const prev = await db.query('SELECT assigned_to FROM vulnerabilities WHERE id=$1', [req.params.id]);
+    const oldAssignee = prev.rows[0]?.assigned_to;
+
     const r = await db.query(`
       UPDATE vulnerabilities SET
         status=COALESCE($2,status), assigned_to=COALESCE($3,assigned_to),
@@ -48,7 +51,18 @@ router.patch('/:id', auth, requireRole('admin','analyst'), async (req, res) => {
         updated_at=NOW()
       WHERE id=$1 RETURNING *
     `, [req.params.id, status, assigned_to, due_date, asset_value, exposure_factor, aro]);
-    res.json(r.rows[0]);
+    const vuln = r.rows[0];
+
+    // Email assignee when assignment changes to a new user
+    if (assigned_to && assigned_to !== oldAssignee) {
+      const uRow = await db.query('SELECT email, full_name, username FROM users WHERE id=$1', [assigned_to]);
+      const u = uRow.rows[0];
+      if (u?.email) {
+        mailer.notifyAssignment(vuln, u.email, u.full_name || u.username).catch(() => {});
+      }
+    }
+
+    res.json(vuln);
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
