@@ -1,5 +1,6 @@
-import React, { useState, useEffect, useCallback, useContext, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useContext, useRef, useMemo } from 'react';
 import { api, AuthContext } from '../App';
+import * as XLSX from 'xlsx';
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid,
   Tooltip as RTooltip, ReferenceLine, ResponsiveContainer, Dot,
@@ -923,9 +924,96 @@ export function Risks() {
   });
   const [loading,    setLoading]    = useState(true);
   const [appetite,   setAppetite]   = useState(null);
-  const [filterCat,  setFilterCat]  = useState('');
-  const [filterStatus, setFilterStatus] = useState('');
+  const [filterCat,       setFilterCat]       = useState('');
+  const [filterStatus,    setFilterStatus]    = useState('');
+  const [filterLevel,     setFilterLevel]     = useState('');
+  const [filterTreatment, setFilterTreatment] = useState('');
+  const [filterOwner,     setFilterOwner]     = useState('');
+  const [filterDateFrom,  setFilterDateFrom]  = useState('');
+  const [filterDateTo,    setFilterDateTo]    = useState('');
+  const [filterReviewFrom,setFilterReviewFrom]= useState('');
+  const [filterReviewTo,  setFilterReviewTo]  = useState('');
+  const [sortCol, setSortCol] = useState('risk_score');
+  const [sortDir, setSortDir] = useState('desc');
   const set = k => e => setForm(p => ({ ...p, [k]: e.target.value }));
+
+  const toggleSort = col => {
+    if (sortCol === col) setSortDir(d => d === 'asc' ? 'desc' : 'asc');
+    else { setSortCol(col); setSortDir('desc'); }
+  };
+
+  const filteredRisks = useMemo(() => {
+    let list = risks.filter(r => {
+      if (filterCat       && (r.category  || '')     !== filterCat)        return false;
+      if (filterStatus    && (r.status    || 'open') !== filterStatus)     return false;
+      if (filterLevel     && r.risk_level             !== filterLevel)     return false;
+      if (filterTreatment && r.treatment              !== filterTreatment) return false;
+      if (filterOwner) {
+        const o = (r.owner_name || r.owner || '').toLowerCase();
+        if (!o.includes(filterOwner.toLowerCase())) return false;
+      }
+      if (filterDateFrom   && r.created_at  && new Date(r.created_at)  < new Date(filterDateFrom))                return false;
+      if (filterDateTo     && r.created_at  && new Date(r.created_at)  > new Date(filterDateTo   + 'T23:59:59')) return false;
+      if (filterReviewFrom && r.review_date && new Date(r.review_date) < new Date(filterReviewFrom))              return false;
+      if (filterReviewTo   && r.review_date && new Date(r.review_date) > new Date(filterReviewTo  + 'T23:59:59')) return false;
+      return true;
+    });
+    return [...list].sort((a, b) => {
+      let av = a[sortCol] ?? (sortDir === 'asc' ? '￿' : '');
+      let bv = b[sortCol] ?? (sortDir === 'asc' ? '￿' : '');
+      if (typeof av === 'string') av = av.toLowerCase();
+      if (typeof bv === 'string') bv = bv.toLowerCase();
+      if (av < bv) return sortDir === 'asc' ? -1 : 1;
+      if (av > bv) return sortDir === 'asc' ? 1 : -1;
+      return 0;
+    });
+  }, [risks, filterCat, filterStatus, filterLevel, filterTreatment, filterOwner,
+      filterDateFrom, filterDateTo, filterReviewFrom, filterReviewTo, sortCol, sortDir]);
+
+  const clearFilters = () => {
+    setFilterCat(''); setFilterStatus(''); setFilterLevel(''); setFilterTreatment('');
+    setFilterOwner(''); setFilterDateFrom(''); setFilterDateTo('');
+    setFilterReviewFrom(''); setFilterReviewTo('');
+  };
+  const hasFilters = filterCat || filterStatus || filterLevel || filterTreatment ||
+                     filterOwner || filterDateFrom || filterDateTo || filterReviewFrom || filterReviewTo;
+
+  const exportToExcel = () => {
+    const rows = filteredRisks.map(r => {
+      const st = appetiteStatus(r.risk_score);
+      return {
+        Score:            r.risk_score,
+        Level:            r.risk_level,
+        Title:            r.title,
+        Category:         r.category || '',
+        Likelihood:       r.likelihood,
+        Impact:           r.impact,
+        Treatment:        r.treatment,
+        Status:           r.status || 'open',
+        Owner:            r.owner_name || r.owner || '',
+        Asset:            r.ip_address || r.hostname || '',
+        Appetite:         st ? st.label : '',
+        'EU AI Act Tier': r.eu_ai_act_tier || '',
+        Registered:       r.created_at  ? new Date(r.created_at).toLocaleDateString('en-GB')  : '',
+        'Review By':      r.review_date ? new Date(r.review_date).toLocaleDateString('en-GB') : '',
+        Notes:            r.notes || '',
+      };
+    });
+    const ws = XLSX.utils.json_to_sheet(rows);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Risk Register');
+    XLSX.writeFile(wb, `risk-register-${new Date().toISOString().slice(0, 10)}.xlsx`);
+  };
+
+  const Th = ({ col, label, style = {} }) => (
+    <th onClick={() => toggleSort(col)}
+        style={{ cursor: 'pointer', userSelect: 'none', whiteSpace: 'nowrap', ...style }}>
+      {label}{' '}
+      <span style={{ color: 'var(--text3)', fontSize: 9 }}>
+        {sortCol === col ? (sortDir === 'asc' ? '↑' : '↓') : '↕'}
+      </span>
+    </th>
+  );
 
   const load = useCallback(() => {
     api.get('/risks').then(r => { setRisks(r.data); setLoading(false); });
@@ -969,9 +1057,19 @@ export function Risks() {
       <div className="page-header">
         <div>
           <div className="page-title">Risk Register</div>
-          <div className="page-subtitle">{risks.filter(r => r.status === 'open').length} open risks</div>
+          <div className="page-subtitle">
+            {risks.filter(r => r.status === 'open').length} open
+            {tab === 'list' && filteredRisks.length !== risks.length && ` · ${filteredRisks.length} shown`}
+          </div>
         </div>
-        <button className="btn btn-primary" onClick={() => setModal(true)}>+ Add Risk</button>
+        <div style={{ display: 'flex', gap: 8 }}>
+          {tab === 'list' && (
+            <button className="btn btn-secondary" onClick={exportToExcel} title="Export current view to Excel">
+              Export XLSX
+            </button>
+          )}
+          <button className="btn btn-primary" onClick={() => setModal(true)}>+ Add Risk</button>
+        </div>
       </div>
 
       <div className="tabs" style={{ marginBottom: 16 }}>
@@ -992,17 +1090,51 @@ export function Risks() {
 
       {tab === 'list' && (
         <>
-          <div className="filter-bar">
-            <select className="filter-select" value={filterCat} onChange={e => setFilterCat(e.target.value)}>
-              <option value="">All Categories</option>
-              {CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
-            </select>
-            <select className="filter-select" value={filterStatus} onChange={e => setFilterStatus(e.target.value)}>
-              <option value="">All Statuses</option>
-              <option value="open">Open</option>
-              <option value="in_progress">In Progress</option>
-              <option value="closed">Closed</option>
-            </select>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 12 }}>
+            <div className="filter-bar" style={{ flexWrap: 'wrap' }}>
+              <select className="filter-select" value={filterCat} onChange={e => setFilterCat(e.target.value)}>
+                <option value="">All Categories</option>
+                {CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
+              </select>
+              <select className="filter-select" value={filterStatus} onChange={e => setFilterStatus(e.target.value)}>
+                <option value="">All Statuses</option>
+                <option value="open">Open</option>
+                <option value="in_progress">In Progress</option>
+                <option value="closed">Closed</option>
+              </select>
+              <select className="filter-select" value={filterLevel} onChange={e => setFilterLevel(e.target.value)}>
+                <option value="">All Levels</option>
+                <option value="critical">Critical</option>
+                <option value="high">High</option>
+                <option value="medium">Medium</option>
+                <option value="low">Low</option>
+              </select>
+              <select className="filter-select" value={filterTreatment} onChange={e => setFilterTreatment(e.target.value)}>
+                <option value="">All Treatments</option>
+                {TREAT.map(t => <option key={t} value={t}>{t.charAt(0).toUpperCase() + t.slice(1)}</option>)}
+              </select>
+              <input className="filter-select" placeholder="Filter by owner…" value={filterOwner}
+                onChange={e => setFilterOwner(e.target.value)} style={{ minWidth: 140 }} />
+            </div>
+            <div className="filter-bar" style={{ flexWrap: 'wrap' }}>
+              <span style={{ fontSize: 11, color: 'var(--text3)', alignSelf: 'center', whiteSpace: 'nowrap' }}>Registered:</span>
+              <input type="date" className="filter-select" value={filterDateFrom} onChange={e => setFilterDateFrom(e.target.value)}
+                title="Registered from" style={{ width: 148 }} />
+              <span style={{ fontSize: 11, color: 'var(--text3)', alignSelf: 'center' }}>–</span>
+              <input type="date" className="filter-select" value={filterDateTo} onChange={e => setFilterDateTo(e.target.value)}
+                title="Registered to" style={{ width: 148 }} />
+              <span style={{ fontSize: 11, color: 'var(--text3)', alignSelf: 'center', whiteSpace: 'nowrap', marginLeft: 8 }}>Review By:</span>
+              <input type="date" className="filter-select" value={filterReviewFrom} onChange={e => setFilterReviewFrom(e.target.value)}
+                title="Review date from" style={{ width: 148 }} />
+              <span style={{ fontSize: 11, color: 'var(--text3)', alignSelf: 'center' }}>–</span>
+              <input type="date" className="filter-select" value={filterReviewTo} onChange={e => setFilterReviewTo(e.target.value)}
+                title="Review date to" style={{ width: 148 }} />
+              {hasFilters && (
+                <button className="btn btn-secondary btn-sm" style={{ fontSize: 11 }} onClick={clearFilters}>
+                  Clear Filters
+                </button>
+              )}
+            </div>
           </div>
         <div className="card" style={{ padding: 0 }}>
           <div className="table-wrap">
@@ -1014,17 +1146,24 @@ export function Risks() {
               <table>
                 <thead>
                   <tr>
-                    <th>Score</th><th>Risk</th><th>Category</th>
-                    <th>L</th><th>I</th><th>Level</th><th>Appetite</th>
-                    <th>AI Act</th><th>Treatment</th><th>Asset</th><th>Status</th><th>Controls</th>
+                    <Th col="risk_score" label="Score" />
+                    <Th col="title"      label="Risk" />
+                    <Th col="category"   label="Category" />
+                    <th>L</th><th>I</th>
+                    <Th col="risk_level"  label="Level" />
+                    <th>Appetite</th>
+                    <th>AI Act</th>
+                    <Th col="treatment"  label="Treatment" />
+                    <Th col="ip_address" label="Asset" />
+                    <Th col="status"     label="Status" />
+                    <Th col="created_at"  label="Registered" />
+                    <Th col="review_date" label="Review By" />
+                    <th>Controls</th>
                     {canEdit && <th></th>}
                   </tr>
                 </thead>
                 <tbody>
-                  {risks.filter(r =>
-                    (!filterCat    || (r.category || '') === filterCat) &&
-                    (!filterStatus || (r.status   || 'open') === filterStatus)
-                  ).map(r => (
+                  {filteredRisks.map(r => (
                     <tr key={r.id} style={{ cursor: 'pointer' }} onClick={() => { setDetailInitTab('details'); setDetailRisk(r); }}
                       title="Click to view risk details">
                       <td><div className={`risk-score ${scoreColorClass(r.risk_score)}`}>{r.risk_score}</div></td>
@@ -1108,6 +1247,18 @@ export function Risks() {
                         >
                           {['open','in_progress','closed'].map(s => <option key={s}>{s}</option>)}
                         </select>
+                      </td>
+                      <td style={{ fontSize: 12, color: 'var(--text3)', whiteSpace: 'nowrap' }}>
+                        {r.created_at
+                          ? new Date(r.created_at).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
+                          : '—'}
+                      </td>
+                      <td style={{ fontSize: 12, whiteSpace: 'nowrap' }}>
+                        {r.review_date ? (
+                          <span style={{ color: new Date(r.review_date) < new Date() ? 'var(--critical)' : 'var(--text2)' }}>
+                            {new Date(r.review_date).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}
+                          </span>
+                        ) : <span style={{ color: 'var(--text3)' }}>—</span>}
                       </td>
                       <td onClick={e => e.stopPropagation()}>
                         <button
