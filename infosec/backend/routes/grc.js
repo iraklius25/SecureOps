@@ -416,42 +416,97 @@ router.delete('/controls/:id', auth, requireRole('admin'), async (req, res) => {
 
 router.get('/reviews', auth, async (_req, res) => {
   try {
-    const r = await db.query('SELECT * FROM grc_reviews ORDER BY review_date DESC');
+    const r = await db.query(`
+      SELECT rv.*, o.name AS org_name
+        FROM grc_reviews rv
+        LEFT JOIN cert_organizations o ON o.id = rv.org_id
+       ORDER BY rv.review_date DESC`);
     res.json(r.rows);
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 router.post('/reviews', auth, requireRole('admin', 'analyst'), async (req, res) => {
-  const { program_id, review_date, review_type, title, chair, attendees, agenda, inputs,
-          decisions, action_items, minutes_text, status, approved_by, agenda_checklist } = req.body;
+  const { program_id, org_id, review_date, review_type, framework, title, chair,
+          location, duration_minutes, next_review_date, scope, findings,
+          attendees, agenda, inputs, decisions, action_items,
+          minutes_text, status, approved_by, agenda_checklist } = req.body;
   if (!title || !review_date) return res.status(400).json({ error: 'title and review_date are required' });
   try {
     const r = await db.query(
       `INSERT INTO grc_reviews
-         (program_id, review_date, review_type, title, chair, attendees, agenda, inputs,
-          decisions, action_items, minutes_text, status, approved_by, agenda_checklist, created_by)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15) RETURNING *`,
-      [program_id || null, review_date, review_type || 'management_review', title.trim(),
-       chair || '', attendees || [], agenda || [], inputs || {}, decisions || [],
-       action_items || [], minutes_text || '', status || 'planned', approved_by || '',
-       agenda_checklist || {}, req.user.id]
+         (program_id, org_id, review_date, review_type, framework, title, chair,
+          location, duration_minutes, next_review_date, scope, findings,
+          attendees, agenda, inputs, decisions, action_items,
+          minutes_text, status, approved_by, agenda_checklist, created_by)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22)
+       RETURNING *`,
+      [
+        program_id        || null,
+        org_id            || null,
+        review_date,
+        review_type       || 'management_review',
+        framework         || null,
+        title.trim(),
+        chair             || '',
+        location          || null,
+        duration_minutes  ? parseInt(duration_minutes, 10) : null,
+        next_review_date  || null,
+        scope             || null,
+        findings          || null,
+        attendees         || [],
+        agenda            || [],
+        inputs            || {},
+        decisions         || [],
+        action_items      || [],
+        minutes_text      || '',
+        status            || 'planned',
+        approved_by       || '',
+        agenda_checklist  || {},
+        req.user.id,
+      ]
     );
     res.status(201).json(r.rows[0]);
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 router.put('/reviews/:id', auth, requireRole('admin', 'analyst'), async (req, res) => {
-  const { review_date, review_type, title, chair, attendees, agenda, inputs, decisions,
-          action_items, minutes_text, status, approved_by, agenda_checklist } = req.body;
+  const { program_id, org_id, review_date, review_type, framework, title, chair,
+          location, duration_minutes, next_review_date, scope, findings,
+          attendees, agenda, inputs, decisions, action_items,
+          minutes_text, status, approved_by, agenda_checklist } = req.body;
   try {
     const r = await db.query(
-      `UPDATE grc_reviews SET review_date=$1, review_type=$2, title=$3, chair=$4, attendees=$5,
-       agenda=$6, inputs=$7, decisions=$8, action_items=$9, minutes_text=$10,
-       status=$11, approved_by=$12, agenda_checklist=COALESCE($13,agenda_checklist), updated_at=NOW()
-       WHERE id=$14 RETURNING *`,
-      [review_date, review_type, title, chair || '', attendees || [], agenda || [],
-       inputs || {}, decisions || [], action_items || [], minutes_text || '',
-       status, approved_by || '', agenda_checklist || null, req.params.id]
+      `UPDATE grc_reviews SET
+         program_id=$1, org_id=$2, review_date=$3, review_type=$4, framework=$5, title=$6,
+         chair=$7, location=$8, duration_minutes=$9, next_review_date=$10, scope=$11,
+         findings=$12, attendees=$13, agenda=$14, inputs=$15, decisions=$16, action_items=$17,
+         minutes_text=$18, status=$19, approved_by=$20,
+         agenda_checklist=COALESCE($21, agenda_checklist), updated_at=NOW()
+       WHERE id=$22 RETURNING *`,
+      [
+        program_id        || null,
+        org_id            || null,
+        review_date,
+        review_type,
+        framework         || null,
+        title,
+        chair             || '',
+        location          || null,
+        duration_minutes  ? parseInt(duration_minutes, 10) : null,
+        next_review_date  || null,
+        scope             || null,
+        findings          || null,
+        attendees         || [],
+        agenda            || [],
+        inputs            || {},
+        decisions         || [],
+        action_items      || [],
+        minutes_text      || '',
+        status,
+        approved_by       || '',
+        agenda_checklist  || null,
+        req.params.id,
+      ]
     );
     if (!r.rows.length) return res.status(404).json({ error: 'Not found' });
     res.json(r.rows[0]);

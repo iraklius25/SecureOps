@@ -4,10 +4,15 @@ import { api, AuthContext } from '../App';
 /* ── Constants ──────────────────────────────────────────────────── */
 
 const FRAMEWORKS = [
-  { id: 'ISO27001', label: 'ISO 27001:2022', desc: 'Information Security Management System', color: '#3b82f6' },
-  { id: 'NISTCSF',  label: 'NIST CSF 2.0',   desc: 'Cybersecurity Framework',              color: '#10b981' },
-  { id: 'ISO42001', label: 'ISO 42001:2023',  desc: 'AI Management System',                color: '#8b5cf6' },
-  { id: 'CUSTOM',   label: 'Custom',          desc: 'Custom program',                      color: '#f59e0b' },
+  { id: 'ISO27001', label: 'ISO 27001:2022', desc: 'Information Security Management System',       color: '#3b82f6' },
+  { id: 'NISTCSF',  label: 'NIST CSF 2.0',   desc: 'Cybersecurity Framework',                     color: '#10b981' },
+  { id: 'ISO42001', label: 'ISO 42001:2023',  desc: 'AI Management System',                        color: '#8b5cf6' },
+  { id: 'PCIDSS',   label: 'PCI DSS v4.0',   desc: 'Payment Card Industry Data Security Standard', color: '#ef4444' },
+  { id: 'SOC2',     label: 'SOC 2',          desc: 'Trust Services Criteria (AICPA)',              color: '#f59e0b' },
+  { id: 'HIPAA',    label: 'HIPAA',          desc: 'Health Insurance Portability & Accountability', color: '#06b6d4' },
+  { id: 'GDPR',     label: 'GDPR',           desc: 'EU General Data Protection Regulation',        color: '#6366f1' },
+  { id: 'ISO22301', label: 'ISO 22301:2019', desc: 'Business Continuity Management System',        color: '#ec4899' },
+  { id: 'CUSTOM',   label: 'Custom',         desc: 'Custom program',                               color: '#6b7280' },
 ];
 
 const PHASES       = ['planning','gap_analysis','implementation','monitoring','certification','review'];
@@ -18,7 +23,10 @@ const TASK_STATUSES= ['open','in_progress','completed','cancelled'];
 const DOC_CATS     = ['policy','procedure','standard','guideline','template','raci','roadmap','report','presentation','training','other'];
 const CTRL_STATUSES= ['not_started','in_progress','implemented','not_applicable'];
 const EFFECTIVENESS= ['effective','partially_effective','ineffective','not_tested','not_applicable'];
-const REVIEW_TYPES = ['management_review','internal_audit','external_audit','surveillance'];
+const REVIEW_TYPES = [
+  'management_review','internal_audit','external_audit',
+  'surveillance','third_party_audit','self_assessment','tabletop_exercise',
+];
 
 const PC = { critical:'#ef4444', high:'#f97316', medium:'#f59e0b', low:'#6b7280' };
 const TC = { open:'#6b7280', in_progress:'#3b82f6', completed:'#10b981', cancelled:'#9ca3af' };
@@ -1233,31 +1241,150 @@ function TasksTab({ user }) {
 
 /* ── Reviews Tab ──────────────────────────────────────────────── */
 
-const AGENDA_ITEMS = [
-  { key:'prev_actions',    label:'Status of actions from previous reviews' },
-  { key:'context_changes', label:'Changes in external/internal context' },
-  { key:'risk_status',     label:'AI risk register status and trends' },
-  { key:'audit_results',   label:'Results of internal audits' },
-  { key:'kpi_performance', label:'AIMS objectives and KPI performance' },
-  { key:'incidents_ncs',   label:'Incidents and nonconformities' },
-  { key:'improvements',    label:'Opportunities for improvement' },
-  { key:'resources',       label:'Resource adequacy' },
-];
+const AGENDA_BY_FRAMEWORK = {
+  ISO27001: {
+    clause: 'ISO 27001:2022 — Clause 9.3 Management Review',
+    items: [
+      { key:'prev_actions',       label:'Status of actions from previous management reviews' },
+      { key:'context_changes',    label:'Changes in external/internal issues relevant to the ISMS' },
+      { key:'info_sec_perf',      label:'Information security performance (incidents, monitoring, audit results, fulfilment of objectives)' },
+      { key:'interested_parties', label:'Feedback from interested parties' },
+      { key:'risk_treatment',     label:'Results of risk assessment and status of risk treatment plan' },
+      { key:'improvements',       label:'Opportunities for continual improvement' },
+    ],
+  },
+  ISO42001: {
+    clause: 'ISO 42001:2023 — Clause 9.3 Management Review',
+    items: [
+      { key:'prev_actions',    label:'Status of actions from previous management reviews' },
+      { key:'context_changes', label:'Changes in external/internal context affecting the AIMS' },
+      { key:'risk_status',     label:'AI risk register status and trends' },
+      { key:'audit_results',   label:'Results of internal audits' },
+      { key:'kpi_performance', label:'AIMS objectives and KPI performance' },
+      { key:'incidents_ncs',   label:'Incidents and nonconformities' },
+      { key:'improvements',    label:'Opportunities for improvement' },
+      { key:'resources',       label:'Resource adequacy' },
+    ],
+  },
+  NISTCSF: {
+    clause: 'NIST CSF 2.0 — Govern Function Review',
+    items: [
+      { key:'risk_posture',   label:'Cybersecurity risk posture and overall exposure level' },
+      { key:'remediation',    label:'Progress on identified risk remediation actions' },
+      { key:'incidents',      label:'Cyber incident review and lessons learned' },
+      { key:'framework_gaps', label:'Framework tier assessment and identified gaps' },
+      { key:'stakeholders',   label:'Stakeholder communication and reporting effectiveness' },
+      { key:'improvements',   label:'Improvement opportunities and programme roadmap updates' },
+    ],
+  },
+  SOC2: {
+    clause: 'SOC 2 — Management Review (Trust Services Criteria)',
+    items: [
+      { key:'tsc_effectiveness', label:'Trust Service Criteria (TSC) control effectiveness review' },
+      { key:'exceptions',        label:'Exceptions, deviations, and deficiencies from controls' },
+      { key:'scope_changes',     label:'Changes to in-scope systems, services, and boundaries' },
+      { key:'vendor_risk',       label:'Vendor / third-party risk and subservice organisation updates' },
+      { key:'evidence',          label:'Audit evidence completeness and readiness' },
+      { key:'findings',          label:'Remediation status of open findings and management responses' },
+    ],
+  },
+  PCIDSS: {
+    clause: 'PCI DSS v4.0 — Req. 12.4 Management Review',
+    items: [
+      { key:'compensating_ctrls', label:'Status and effectiveness of compensating controls' },
+      { key:'vuln_scans',         label:'ASV external and internal vulnerability scan results' },
+      { key:'pentest',            label:'Penetration testing findings and remediation status' },
+      { key:'patching',           label:'Patch management and system hardening status' },
+      { key:'incident_plan',      label:'Incident response plan review, testing, and updates' },
+      { key:'policy_updates',     label:'Security policy and procedure review and updates' },
+    ],
+  },
+  ISO22301: {
+    clause: 'ISO 22301:2019 — Clause 9.3 Management Review',
+    items: [
+      { key:'prev_actions',   label:'Status of actions from previous management reviews' },
+      { key:'bcms_changes',   label:'Changes affecting the BCMS (context, interested parties, scope)' },
+      { key:'bc_performance', label:'Business continuity performance and KPI results' },
+      { key:'bia_risk',       label:'Business impact analysis (BIA) and risk assessment updates' },
+      { key:'exercise_tests', label:'Exercise and test results with lessons learned' },
+      { key:'improvements',   label:'Opportunities for continual improvement of the BCMS' },
+    ],
+  },
+  GDPR: {
+    clause: 'GDPR — Art. 5(2) Accountability Review',
+    items: [
+      { key:'ropa',              label:'Records of processing activities (RoPA) accuracy and completeness' },
+      { key:'dsr_compliance',    label:'Data subject rights requests handling and compliance' },
+      { key:'breaches',          label:'Data breach incidents, root causes, and regulatory notifications' },
+      { key:'processors',        label:'Third-party processor DPAs and sub-processor chain updates' },
+      { key:'dpia_status',       label:'DPIA status for high-risk processing activities' },
+      { key:'regulatory_updates',label:'Regulatory and supervisory authority updates and their impact' },
+    ],
+  },
+  HIPAA: {
+    clause: 'HIPAA — §164.308(a)(1) Risk Management Review',
+    items: [
+      { key:'risk_analysis',  label:'Security risk analysis and risk management updates' },
+      { key:'incidents',      label:'Security incident review and breach notification status' },
+      { key:'training',       label:'Workforce security training and awareness compliance' },
+      { key:'baa_status',     label:'Business associate agreement (BAA) status and inventory' },
+      { key:'safeguards',     label:'Technical, administrative, and physical safeguard effectiveness' },
+      { key:'policy_review',  label:'HIPAA policies and procedures review and updates' },
+    ],
+  },
+  CUSTOM: {
+    clause: 'Management Review — General Agenda',
+    items: [
+      { key:'prev_actions',    label:'Status of actions from previous reviews' },
+      { key:'context_changes', label:'Changes in context (internal/external environment)' },
+      { key:'risk_status',     label:'Risk register status and trends' },
+      { key:'audit_results',   label:'Audit and assessment results' },
+      { key:'kpi_performance', label:'Performance against objectives and KPIs' },
+      { key:'incidents_ncs',   label:'Incidents and nonconformities' },
+      { key:'improvements',    label:'Opportunities for improvement' },
+      { key:'resources',       label:'Resource adequacy and budget alignment' },
+    ],
+  },
+};
+
+const GENERIC_AGENDA = AGENDA_BY_FRAMEWORK.CUSTOM;
+
+function getAgenda(framework) {
+  return AGENDA_BY_FRAMEWORK[framework] || GENERIC_AGENDA;
+}
+
+const FRAMEWORK_COLORS = {
+  ISO27001:'#3b82f6', ISO42001:'#8b5cf6', NISTCSF:'#10b981',
+  PCIDSS:'#ef4444', SOC2:'#f59e0b', HIPAA:'#06b6d4',
+  GDPR:'#6366f1', ISO22301:'#ec4899', CUSTOM:'#6b7280',
+};
 
 function ReviewsTab({ user }) {
   const [reviews,  setReviews]  = useState([]);
   const [programs, setPrograms] = useState([]);
+  const [orgs,     setOrgs]     = useState([]);
   const [showForm, setShowForm] = useState(false);
   const [editing,  setEditing]  = useState(null);
-  const blank = { program_id:'', review_date:'', review_type:'management_review', title:'', chair:'', status:'planned', minutes_text:'', approved_by:'', agenda_checklist:{} };
+  const [expanded, setExpanded] = useState({});
+
+  const blank = {
+    org_id:'', program_id:'', framework:'', review_date:'',
+    review_type:'management_review', title:'', chair:'', status:'planned',
+    location:'', duration_minutes:'', next_review_date:'', scope:'',
+    findings:'', minutes_text:'', approved_by:'', agenda_checklist:{},
+  };
   const [form, setForm] = useState(blank);
   const [err,  setErr]  = useState('');
   const canEdit = ['admin','analyst'].includes(user?.role);
 
   const load = async () => {
     try {
-      const [r, p] = await Promise.all([api.get('/grc/reviews'), api.get('/grc/programs')]);
-      setReviews(r.data); setPrograms(p.data);
+      const [r, p, o] = await Promise.all([
+        api.get('/grc/reviews'),
+        api.get('/grc/programs'),
+        api.get('/budget/orgs'),
+      ]);
+      setReviews(r.data); setPrograms(p.data); setOrgs(o.data);
     } catch {}
   };
   useEffect(() => { load(); }, []);
@@ -1275,87 +1402,172 @@ function ReviewsTab({ user }) {
 
   const startEdit = r => {
     setEditing(r.id);
-    setForm({ ...r, review_date: r.review_date?.slice(0,10)||'', agenda_checklist: r.agenda_checklist || {} });
+    setForm({
+      ...blank, ...r,
+      review_date:      r.review_date?.slice(0,10)      || '',
+      next_review_date: r.next_review_date?.slice(0,10) || '',
+      duration_minutes: r.duration_minutes              || '',
+      agenda_checklist: r.agenda_checklist              || {},
+    });
     setShowForm(true);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
   const del = async id => {
-    if (!window.confirm('Delete this review?')) return;
+    if (!window.confirm('Delete this review/audit record?')) return;
     try { await api.delete(`/grc/reviews/${id}`); load(); } catch {}
   };
+
+  const agendaForForm = getAgenda(form.framework);
 
   return (
     <div>
       <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:16 }}>
-        <h2 style={{ fontSize:18, fontWeight:700, margin:0 }}>Management Reviews & Audits</h2>
-        {canEdit && <button style={btn('primary')} onClick={() => { setEditing(null); setForm(blank); setShowForm(s=>!s); }}>+ Schedule Review</button>}
+        <div>
+          <h2 style={{ fontSize:18, fontWeight:700, margin:0 }}>Management Reviews &amp; Audits</h2>
+          <p style={{ margin:'4px 0 0', fontSize:12, color:'var(--text3)' }}>Track formal reviews and audits across any standard. Agenda items adapt to the selected framework.</p>
+        </div>
+        {canEdit && (
+          <button style={btn('primary')} onClick={() => { setEditing(null); setForm(blank); setShowForm(s => !s); }}>
+            {showForm ? 'Close Form' : '+ Schedule Review'}
+          </button>
+        )}
       </div>
 
       {showForm && canEdit && (
-        <div style={{ ...card, marginBottom:20 }}>
-          <h3 style={{ fontSize:15, fontWeight:700, margin:'0 0 14px' }}>{editing ? 'Edit Review' : 'Schedule Review'}</h3>
-          <form onSubmit={submit} style={{ display:'flex', flexDirection:'column', gap:12 }}>
-            {err && <div style={{ color:'#ef4444', fontSize:13 }}>{err}</div>}
+        <div style={{ ...card, marginBottom:20, borderLeft:'3px solid var(--accent)' }}>
+          <h3 style={{ fontSize:15, fontWeight:700, margin:'0 0 16px', color:'var(--text1)' }}>{editing ? 'Edit Review / Audit' : 'Schedule New Review / Audit'}</h3>
+          <form onSubmit={submit} style={{ display:'flex', flexDirection:'column', gap:14 }}>
+            {err && <div style={{ color:'#ef4444', fontSize:13, padding:'8px 12px', background:'#ef444415', borderRadius:6 }}>{err}</div>}
+
+            {/* Row 1: Title + Type + Status */}
             <div style={{ display:'grid', gridTemplateColumns:'2fr 1fr 1fr', gap:12 }}>
-              <div className="form-group">
-                <label>Title *</label>
-                <input style={inp} value={form.title} onChange={setF('title')} required placeholder="e.g. Q2 2026 Management Review" />
+              <div className="form-group" style={{ margin:0 }}>
+                <label style={{ color:'var(--text2)', fontSize:12, fontWeight:600 }}>Title *</label>
+                <input style={inp} value={form.title} onChange={setF('title')} required placeholder="e.g. Q2 2026 ISO 27001 Management Review" />
               </div>
-              <div className="form-group">
-                <label>Type</label>
+              <div className="form-group" style={{ margin:0 }}>
+                <label style={{ color:'var(--text2)', fontSize:12, fontWeight:600 }}>Review Type</label>
                 <select style={sel} value={form.review_type} onChange={setF('review_type')}>
                   {REVIEW_TYPES.map(t => <option key={t} value={t}>{humanize(t)}</option>)}
                 </select>
               </div>
-              <div className="form-group">
-                <label>Status</label>
+              <div className="form-group" style={{ margin:0 }}>
+                <label style={{ color:'var(--text2)', fontSize:12, fontWeight:600 }}>Status</label>
                 <select style={sel} value={form.status} onChange={setF('status')}>
                   {['planned','in_progress','completed','cancelled'].map(s => <option key={s} value={s}>{humanize(s)}</option>)}
                 </select>
               </div>
             </div>
-            <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr 1fr', gap:12 }}>
-              <div className="form-group">
-                <label>Review Date *</label>
-                <input type="date" style={inp} value={form.review_date} onChange={setF('review_date')} required />
+
+            {/* Row 2: Framework + Organization + Program */}
+            <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:12 }}>
+              <div className="form-group" style={{ margin:0 }}>
+                <label style={{ color:'var(--text2)', fontSize:12, fontWeight:600 }}>Standard / Framework</label>
+                <select style={sel} value={form.framework} onChange={setF('framework')}>
+                  <option value="">— Select standard —</option>
+                  {FRAMEWORKS.map(f => <option key={f.id} value={f.id}>{f.label}</option>)}
+                </select>
               </div>
-              <div className="form-group">
-                <label>Chair</label>
-                <input style={inp} value={form.chair} onChange={setF('chair')} placeholder="Meeting chair" />
+              <div className="form-group" style={{ margin:0 }}>
+                <label style={{ color:'var(--text2)', fontSize:12, fontWeight:600 }}>Organization</label>
+                <select style={sel} value={form.org_id} onChange={setF('org_id')}>
+                  <option value="">— Not linked —</option>
+                  {orgs.map(o => <option key={o.id} value={o.id}>{o.name}</option>)}
+                </select>
               </div>
-              <div className="form-group">
-                <label>Approved By</label>
-                <input style={inp} value={form.approved_by} onChange={setF('approved_by')} placeholder="Approver name" />
-              </div>
-              <div className="form-group">
-                <label>Program</label>
+              <div className="form-group" style={{ margin:0 }}>
+                <label style={{ color:'var(--text2)', fontSize:12, fontWeight:600 }}>GRC Program</label>
                 <select style={sel} value={form.program_id} onChange={setF('program_id')}>
                   <option value="">— None —</option>
                   {programs.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
                 </select>
               </div>
             </div>
-            <div className="form-group">
-              <label style={{ fontWeight:600 }}>ISO 42001 Clause 9.3 Mandatory Agenda Items</label>
-              <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:6, marginTop:6 }}>
-                {AGENDA_ITEMS.map(item => (
-                  <label key={item.key} style={{ display:'flex', alignItems:'center', gap:8, fontSize:12, color:'var(--text)', cursor:'pointer', padding:'6px 8px', borderRadius:4, background:'var(--bg3)', border:'1px solid var(--border)' }}>
+
+            {/* Row 3: Dates + Chair + Location */}
+            <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr 1fr', gap:12 }}>
+              <div className="form-group" style={{ margin:0 }}>
+                <label style={{ color:'var(--text2)', fontSize:12, fontWeight:600 }}>Review Date *</label>
+                <input type="date" style={inp} value={form.review_date} onChange={setF('review_date')} required />
+              </div>
+              <div className="form-group" style={{ margin:0 }}>
+                <label style={{ color:'var(--text2)', fontSize:12, fontWeight:600 }}>Next Review Date</label>
+                <input type="date" style={inp} value={form.next_review_date} onChange={setF('next_review_date')} />
+              </div>
+              <div className="form-group" style={{ margin:0 }}>
+                <label style={{ color:'var(--text2)', fontSize:12, fontWeight:600 }}>Chair / Lead Auditor</label>
+                <input style={inp} value={form.chair} onChange={setF('chair')} placeholder="Name" />
+              </div>
+              <div className="form-group" style={{ margin:0 }}>
+                <label style={{ color:'var(--text2)', fontSize:12, fontWeight:600 }}>Duration (minutes)</label>
+                <input type="number" min="15" step="15" style={inp} value={form.duration_minutes} onChange={setF('duration_minutes')} placeholder="e.g. 90" />
+              </div>
+            </div>
+
+            {/* Row 4: Location + Approved By */}
+            <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12 }}>
+              <div className="form-group" style={{ margin:0 }}>
+                <label style={{ color:'var(--text2)', fontSize:12, fontWeight:600 }}>Location / Meeting Link</label>
+                <input style={inp} value={form.location} onChange={setF('location')} placeholder="e.g. Boardroom A or https://meet.example.com/…" />
+              </div>
+              <div className="form-group" style={{ margin:0 }}>
+                <label style={{ color:'var(--text2)', fontSize:12, fontWeight:600 }}>Approved By</label>
+                <input style={inp} value={form.approved_by} onChange={setF('approved_by')} placeholder="Approver name" />
+              </div>
+            </div>
+
+            {/* Scope */}
+            <div className="form-group" style={{ margin:0 }}>
+              <label style={{ color:'var(--text2)', fontSize:12, fontWeight:600 }}>Scope</label>
+              <textarea style={{ ...inp, height:60, resize:'vertical' }} value={form.scope} onChange={setF('scope')} placeholder="Describe the scope of this review or audit…" />
+            </div>
+
+            {/* Agenda checklist — dynamic per framework */}
+            <div>
+              <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:8 }}>
+                <label style={{ fontWeight:700, fontSize:13, color:'var(--text1)' }}>
+                  {agendaForForm.clause} — Agenda Checklist
+                </label>
+                {form.framework && (
+                  <span style={{ fontSize:11, padding:'2px 8px', borderRadius:12, background: (FRAMEWORK_COLORS[form.framework]||'#6b7280') + '22', color: FRAMEWORK_COLORS[form.framework]||'#6b7280', fontWeight:600 }}>
+                    {FRAMEWORKS.find(f => f.id === form.framework)?.label || form.framework}
+                  </span>
+                )}
+              </div>
+              <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:6 }}>
+                {agendaForForm.items.map(item => (
+                  <label key={item.key} style={{
+                    display:'flex', alignItems:'flex-start', gap:8, fontSize:13,
+                    color:'var(--text1)', cursor:'pointer', padding:'8px 10px',
+                    borderRadius:6, background:'var(--surface3)', border:'1px solid var(--border2)',
+                    lineHeight:1.4,
+                  }}>
                     <input
                       type="checkbox"
                       checked={!!(form.agenda_checklist && form.agenda_checklist[item.key])}
                       onChange={e => setForm(p => ({ ...p, agenda_checklist: { ...p.agenda_checklist, [item.key]: e.target.checked } }))}
-                      style={{ accentColor:'var(--accent)', flexShrink:0 }}
+                      style={{ accentColor:'var(--accent)', flexShrink:0, marginTop:2 }}
                     />
-                    {item.label}
+                    <span>{item.label}</span>
                   </label>
                 ))}
               </div>
             </div>
-            <div className="form-group">
-              <label>Minutes / Notes / Decisions</label>
-              <textarea style={{ ...inp, height:110, resize:'vertical' }} value={form.minutes_text} onChange={setF('minutes_text')} placeholder="Record meeting outcomes, decisions, action items…" />
+
+            {/* Minutes / Decisions */}
+            <div className="form-group" style={{ margin:0 }}>
+              <label style={{ color:'var(--text2)', fontSize:12, fontWeight:600 }}>Minutes / Decisions / Action Items</label>
+              <textarea style={{ ...inp, height:110, resize:'vertical' }} value={form.minutes_text} onChange={setF('minutes_text')} placeholder="Record meeting outcomes, decisions, action items, owners, due dates…" />
             </div>
-            <div style={{ display:'flex', gap:8, justifyContent:'flex-end' }}>
+
+            {/* Findings */}
+            <div className="form-group" style={{ margin:0 }}>
+              <label style={{ color:'var(--text2)', fontSize:12, fontWeight:600 }}>Findings / Observations</label>
+              <textarea style={{ ...inp, height:80, resize:'vertical' }} value={form.findings} onChange={setF('findings')} placeholder="Record key findings, observations, and nonconformities…" />
+            </div>
+
+            <div style={{ display:'flex', gap:8, justifyContent:'flex-end', paddingTop:4 }}>
               <button type="button" style={btn()} onClick={() => { setShowForm(false); setEditing(null); }}>Cancel</button>
               <button type="submit" style={btn('primary')}>{editing ? 'Update' : 'Schedule'}</button>
             </div>
@@ -1363,73 +1575,130 @@ function ReviewsTab({ user }) {
         </div>
       )}
 
+      {/* Review cards */}
       <div style={{ display:'flex', flexDirection:'column', gap:12 }}>
         {reviews.length === 0 && (
-          <div style={{ ...card, textAlign:'center', color:'var(--text3)', padding:32 }}>No reviews scheduled yet</div>
-        )}
-        {reviews.map(r => (
-          <div key={r.id} style={{ ...card, display:'flex', gap:16, alignItems:'flex-start' }}>
-            <div style={{ width:4, background: RC[r.status]||'#6b7280', borderRadius:2, alignSelf:'stretch', flexShrink:0 }} />
-            <div style={{ flex:1, minWidth:0 }}>
-              <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:8, flexWrap:'wrap', gap:8 }}>
-                <div>
-                  <div style={{ fontSize:15, fontWeight:700, color:'var(--text1)' }}>{r.title}</div>
-                  <div style={{ fontSize:12, color:'var(--text3)', marginTop:3 }}>
-                    {humanize(r.review_type)} · {fmtDate(r.review_date)} · Chair: {r.chair||'—'}
-                    {r.approved_by && ` · Approved by: ${r.approved_by}`}
-                  </div>
-                </div>
-                <div style={{ display:'flex', gap:8, alignItems:'center', flexShrink:0 }}>
-                  <span style={badge(RC[r.status]||'#6b7280')}>{humanize(r.status)}</span>
-                  {canEdit && (
-                    <>
-                      <button style={{ ...btn(), padding:'4px 10px', fontSize:12 }} onClick={() => startEdit(r)}>Edit</button>
-                      <button style={{ ...btn('danger'), padding:'4px 10px', fontSize:12 }} onClick={() => del(r.id)}>Del</button>
-                    </>
-                  )}
-                </div>
-              </div>
-              {r.agenda_checklist && (() => {
-                const covered = AGENDA_ITEMS.filter(i => r.agenda_checklist[i.key]).length;
-                const total   = AGENDA_ITEMS.length;
-                return (
-                  <div style={{ marginBottom:10 }}>
-                    <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:4 }}>
-                      <span style={{ fontSize:11, color:'var(--text3)', fontWeight:600 }}>Agenda Coverage</span>
-                      <span style={{ fontSize:12, fontWeight:700, color: covered===total?'#10b981':'var(--text2)' }}>{covered}/{total} items</span>
-                    </div>
-                    <div style={{ height:5, background:'var(--bg3)', border:'1px solid var(--border)', borderRadius:3, overflow:'hidden', marginBottom:6 }}>
-                      <div style={{ height:'100%', width:`${(covered/total)*100}%`, background: covered===total?'#10b981':'#3b82f6', borderRadius:3, transition:'width 0.3s' }} />
-                    </div>
-                    <div style={{ display:'flex', flexWrap:'wrap', gap:5, marginTop:2 }}>
-                      {AGENDA_ITEMS.map(item => {
-                        const covered = r.agenda_checklist?.[item.key];
-                        return (
-                        <span key={item.key} style={{
-                          fontSize:12, padding:'4px 10px', borderRadius:10,
-                          display:'inline-flex', alignItems:'center', gap:5,
-                          background: covered ? 'rgba(16,185,129,0.15)' : 'var(--bg3)',
-                          color: covered ? '#10b981' : 'var(--text)',
-                          border: `1px solid ${covered ? 'rgba(16,185,129,0.4)' : 'var(--border2)'}`,
-                          fontWeight: covered ? 600 : 400,
-                        }}>
-                          <span style={{ fontSize:11 }}>{covered ? '✓' : '○'}</span>
-                          {item.label}
-                        </span>
-                        );
-                      })}
-                    </div>
-                  </div>
-                );
-              })()}
-              {r.minutes_text && (
-                <div style={{ fontSize:13, color:'var(--text)', background:'var(--bg3)', border:'1px solid var(--border)', borderRadius:6, padding:'10px 14px', whiteSpace:'pre-wrap', maxHeight:120, overflow:'auto', lineHeight:1.5 }}>
-                  {r.minutes_text}
-                </div>
-              )}
-            </div>
+          <div style={{ ...card, textAlign:'center', color:'var(--text3)', padding:40 }}>
+            <div style={{ fontSize:32, marginBottom:10 }}>📋</div>
+            No reviews or audits scheduled yet.
           </div>
-        ))}
+        )}
+        {reviews.map(r => {
+          const fw         = FRAMEWORKS.find(f => f.id === r.framework);
+          const fwColor    = FRAMEWORK_COLORS[r.framework] || '#6b7280';
+          const agenda     = getAgenda(r.framework);
+          const checklist  = r.agenda_checklist || {};
+          const covered    = agenda.items.filter(i => checklist[i.key]).length;
+          const total      = agenda.items.length;
+          const isExpanded = expanded[r.id];
+
+          return (
+            <div key={r.id} style={{ ...card, display:'flex', gap:0, padding:0, overflow:'hidden' }}>
+              {/* Left color bar */}
+              <div style={{ width:4, background: RC[r.status]||'#6b7280', flexShrink:0 }} />
+
+              <div style={{ flex:1, minWidth:0, padding:16 }}>
+                {/* Header row */}
+                <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', gap:8, flexWrap:'wrap' }}>
+                  <div style={{ flex:1, minWidth:0 }}>
+                    <div style={{ display:'flex', alignItems:'center', gap:8, flexWrap:'wrap', marginBottom:4 }}>
+                      <span style={{ fontSize:15, fontWeight:700, color:'var(--text1)' }}>{r.title}</span>
+                      {fw && <span style={{ fontSize:11, padding:'2px 8px', borderRadius:12, background: fwColor+'22', color: fwColor, fontWeight:600, flexShrink:0 }}>{fw.label}</span>}
+                    </div>
+                    <div style={{ fontSize:12, color:'var(--text3)', display:'flex', flexWrap:'wrap', gap:'4px 12px' }}>
+                      <span>{humanize(r.review_type)}</span>
+                      <span>📅 {fmtDate(r.review_date)}</span>
+                      {r.chair       && <span>👤 {r.chair}</span>}
+                      {r.location    && <span>📍 {r.location}</span>}
+                      {r.org_name    && <span>🏢 {r.org_name}</span>}
+                      {r.approved_by && <span>✅ Approved: {r.approved_by}</span>}
+                      {r.duration_minutes && <span>⏱ {r.duration_minutes} min</span>}
+                      {r.next_review_date && <span>🔁 Next: {fmtDate(r.next_review_date)}</span>}
+                    </div>
+                  </div>
+                  <div style={{ display:'flex', gap:6, alignItems:'center', flexShrink:0 }}>
+                    <span style={badge(RC[r.status]||'#6b7280')}>{humanize(r.status)}</span>
+                    <button style={{ ...btn(), padding:'3px 10px', fontSize:12 }} onClick={() => setExpanded(p => ({ ...p, [r.id]: !p[r.id] }))}>
+                      {isExpanded ? 'Collapse' : 'Details'}
+                    </button>
+                    {canEdit && (
+                      <>
+                        <button style={{ ...btn(), padding:'3px 10px', fontSize:12 }} onClick={() => startEdit(r)}>Edit</button>
+                        <button style={{ ...btn('danger'), padding:'3px 10px', fontSize:12 }} onClick={() => del(r.id)}>Del</button>
+                      </>
+                    )}
+                  </div>
+                </div>
+
+                {/* Agenda progress bar — always visible */}
+                <div style={{ marginTop:10 }}>
+                  <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:3 }}>
+                    <span style={{ fontSize:11, color:'var(--text3)', fontWeight:600 }}>
+                      Agenda Coverage — {agenda.clause}
+                    </span>
+                    <span style={{ fontSize:11, fontWeight:700, color: covered===total ? '#10b981':'var(--text2)' }}>{covered}/{total}</span>
+                  </div>
+                  <div style={{ height:5, background:'var(--surface3)', borderRadius:3, overflow:'hidden' }}>
+                    <div style={{ height:'100%', width:`${total ? (covered/total)*100 : 0}%`, background: covered===total?'#10b981':'#3b82f6', borderRadius:3, transition:'width 0.3s' }} />
+                  </div>
+                </div>
+
+                {/* Expanded detail */}
+                {isExpanded && (
+                  <div style={{ marginTop:14, display:'flex', flexDirection:'column', gap:12 }}>
+
+                    {/* Agenda checklist pills */}
+                    <div>
+                      <div style={{ fontSize:11, color:'var(--text3)', fontWeight:600, textTransform:'uppercase', letterSpacing:'0.05em', marginBottom:6 }}>Agenda Items</div>
+                      <div style={{ display:'flex', flexWrap:'wrap', gap:6 }}>
+                        {agenda.items.map(item => {
+                          const done = !!checklist[item.key];
+                          return (
+                            <span key={item.key} style={{
+                              fontSize:12, padding:'5px 10px', borderRadius:8, lineHeight:1.3,
+                              display:'inline-flex', alignItems:'flex-start', gap:6, maxWidth:340,
+                              background: done ? 'rgba(16,185,129,0.12)' : 'var(--surface3)',
+                              color: done ? '#10b981' : 'var(--text2)',
+                              border: `1px solid ${done ? 'rgba(16,185,129,0.35)' : 'var(--border2)'}`,
+                              fontWeight: done ? 600 : 400,
+                            }}>
+                              <span style={{ flexShrink:0, marginTop:1 }}>{done ? '✓' : '○'}</span>
+                              <span>{item.label}</span>
+                            </span>
+                          );
+                        })}
+                      </div>
+                    </div>
+
+                    {/* Scope */}
+                    {r.scope && (
+                      <div>
+                        <div style={{ fontSize:11, color:'var(--text3)', fontWeight:600, textTransform:'uppercase', letterSpacing:'0.05em', marginBottom:4 }}>Scope</div>
+                        <div style={{ fontSize:13, color:'var(--text1)', background:'var(--surface3)', borderRadius:6, padding:'8px 12px', whiteSpace:'pre-wrap', lineHeight:1.5 }}>{r.scope}</div>
+                      </div>
+                    )}
+
+                    {/* Minutes */}
+                    {r.minutes_text && (
+                      <div>
+                        <div style={{ fontSize:11, color:'var(--text3)', fontWeight:600, textTransform:'uppercase', letterSpacing:'0.05em', marginBottom:4 }}>Minutes / Decisions</div>
+                        <div style={{ fontSize:13, color:'var(--text1)', background:'var(--surface3)', border:'1px solid var(--border2)', borderRadius:6, padding:'10px 14px', whiteSpace:'pre-wrap', maxHeight:180, overflow:'auto', lineHeight:1.5 }}>{r.minutes_text}</div>
+                      </div>
+                    )}
+
+                    {/* Findings */}
+                    {r.findings && (
+                      <div>
+                        <div style={{ fontSize:11, color:'var(--text3)', fontWeight:600, textTransform:'uppercase', letterSpacing:'0.05em', marginBottom:4 }}>Findings / Observations</div>
+                        <div style={{ fontSize:13, color:'var(--text1)', background:'#ef444410', border:'1px solid #ef444430', borderRadius:6, padding:'10px 14px', whiteSpace:'pre-wrap', maxHeight:180, overflow:'auto', lineHeight:1.5 }}>{r.findings}</div>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            </div>
+          );
+        })}
       </div>
     </div>
   );

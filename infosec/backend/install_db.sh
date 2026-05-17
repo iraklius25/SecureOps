@@ -63,6 +63,7 @@ run schema_ai_systems.sql
 run schema_certifications.sql        # creates cert_organizations
 run schema_maturity_org.sql          # depends on cert_organizations
 run schema_budget.sql                # depends on cert_organizations
+run schema_reviews_v2.sql            # extends grc_reviews + grc_programs
 run schema_metrics.sql
 run schema_issc_member_ids.sql
 
