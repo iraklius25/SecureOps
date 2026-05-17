@@ -4,31 +4,71 @@ const { auth, requireRole } = require('../middleware/auth');
 const logger = require('../services/logger');
 
 // ── ICS calendar helper ───────────────────────────────────────
-function buildICS(meeting) {
-  const d = new Date(meeting.meeting_date);
+// Generates a personalized VCALENDAR with ORGANIZER + ATTENDEE so
+// email clients (Outlook, Gmail) show Accept/Decline buttons.
+function buildICS(meeting, organizerEmail, attendeeName, attendeeEmail) {
+  const d   = new Date(meeting.meeting_date);
   const ymd = d.toISOString().slice(0, 10).replace(/-/g, '');
-  const nextDay = new Date(d); nextDay.setDate(nextDay.getDate() + 1);
-  const ymdNext = nextDay.toISOString().slice(0, 10).replace(/-/g, '');
-  const stamp   = new Date().toISOString().replace(/[-:.]/g, '').slice(0, 15) + 'Z';
+  const stamp = new Date().toISOString().replace(/[-:.]/g, '').slice(0, 15) + 'Z';
   const esc = s => (s || '').replace(/\\/g, '\\\\').replace(/;/g, '\\;').replace(/,/g, '\\,').replace(/\n/g, '\\n');
+
+  let dtStart, dtEnd, isDateTime = false;
+
+  if (meeting.meeting_time) {
+    isDateTime = true;
+    const timeParts = String(meeting.meeting_time).split(':');
+    const hInt = parseInt(timeParts[0], 10);
+    const mInt = parseInt(timeParts[1], 10);
+    const durationMins = parseInt(meeting.duration_minutes, 10) || 60;
+    // Use UTC-based date arithmetic to avoid local timezone shifting the date
+    const startMs = Date.UTC(
+      d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate(), hInt, mInt, 0
+    );
+    const endMs = startMs + durationMins * 60000;
+    const fmtDt = ms => {
+      const dt = new Date(ms);
+      return [
+        dt.getUTCFullYear(),
+        String(dt.getUTCMonth() + 1).padStart(2, '0'),
+        String(dt.getUTCDate()).padStart(2, '0'),
+        'T',
+        String(dt.getUTCHours()).padStart(2, '0'),
+        String(dt.getUTCMinutes()).padStart(2, '0'),
+        '00',
+      ].join('');
+    };
+    dtStart = fmtDt(startMs);
+    dtEnd   = fmtDt(endMs);
+  } else {
+    const nextDay = new Date(d);
+    nextDay.setUTCDate(nextDay.getUTCDate() + 1);
+    dtStart = ymd;
+    dtEnd   = nextDay.toISOString().slice(0, 10).replace(/-/g, '');
+  }
+
   const desc = [
     meeting.agenda   ? `Agenda:\\n${esc(meeting.agenda)}` : null,
     meeting.location ? `Location: ${esc(meeting.location)}` : null,
     meeting.chair    ? `Chair: ${esc(meeting.chair)}` : null,
   ].filter(Boolean).join('\\n\\n');
+
   return [
     'BEGIN:VCALENDAR',
     'VERSION:2.0',
     'PRODID:-//SecureOps//ISSC//EN',
     'METHOD:REQUEST',
     'BEGIN:VEVENT',
-    `UID:issc-${meeting.id}-${stamp}@secureops`,
+    `UID:issc-${meeting.id}@secureops`,
     `DTSTAMP:${stamp}`,
-    `DTSTART;VALUE=DATE:${ymd}`,
-    `DTEND;VALUE=DATE:${ymdNext}`,
+    isDateTime ? `DTSTART:${dtStart}` : `DTSTART;VALUE=DATE:${dtStart}`,
+    isDateTime ? `DTEND:${dtEnd}`     : `DTEND;VALUE=DATE:${dtEnd}`,
     `SUMMARY:${esc(meeting.title)}`,
     meeting.location ? `LOCATION:${esc(meeting.location)}` : null,
-    desc ? `DESCRIPTION:${desc}` : null,
+    desc            ? `DESCRIPTION:${desc}` : null,
+    organizerEmail  ? `ORGANIZER;CN=SecureOps ISSC:mailto:${organizerEmail}` : null,
+    (attendeeEmail && attendeeName)
+      ? `ATTENDEE;RSVP=TRUE;CN=${esc(attendeeName)};PARTSTAT=NEEDS-ACTION:mailto:${attendeeEmail}`
+      : null,
     'STATUS:CONFIRMED',
     'SEQUENCE:0',
     'END:VEVENT',
@@ -47,7 +87,6 @@ async function sendMeetingInvitations(meeting, memberIds) {
     logger.info(`sendMeetingInvitations: ${ids.length} valid UUIDs from ${memberIds.length} provided`);
     if (!ids.length) return;
 
-    // Use individual placeholders — more reliable than ANY($1::uuid[]) with node-postgres
     const placeholders = ids.map((_, i) => `$${i + 1}`).join(',');
     const r = await db.query(
       `SELECT id, full_name, email, role FROM issc_members WHERE id IN (${placeholders}) AND email IS NOT NULL AND email <> ''`,
@@ -59,31 +98,38 @@ async function sendMeetingInvitations(meeting, memberIds) {
       return;
     }
 
+    // Load smtp_from to use as ORGANIZER in the calendar invite
+    const smtpRow = await db.query(`SELECT value FROM settings WHERE key='smtp_from' LIMIT 1`);
+    const organizerEmail = smtpRow.rows[0]?.value || '';
+
     const mailer  = require('../services/mailer');
-    const ics     = buildICS(meeting);
     const dateStr = new Date(meeting.meeting_date).toLocaleDateString('en-GB', { weekday:'long', year:'numeric', month:'long', day:'numeric' });
+    const timeStr = meeting.meeting_time ? ` at ${String(meeting.meeting_time).slice(0, 5)}` : '';
+
     for (const m of r.rows) {
+      const ics = buildICS(meeting, organizerEmail, m.full_name, m.email);
       const html = `
         <div style="font-family:sans-serif;max-width:600px">
           <h2 style="color:#3b82f6;margin-bottom:4px">ISSC Meeting Invitation</h2>
           <p style="color:#666;font-size:13px;margin-top:0">Information Security Steering Committee</p>
           <p>Dear ${m.full_name},</p>
-          <p>You are invited to the following ISSC meeting. A calendar invitation (.ics) is attached.</p>
+          <p>You are invited to the following ISSC meeting. A calendar invitation (.ics) is attached — open it to add this event to your calendar.</p>
           <table style="border-collapse:collapse;width:100%;margin:16px 0;font-size:13px">
             <tr style="background:#f6f8fa"><td style="padding:10px 12px;border:1px solid #e0e0e0;font-weight:700;width:130px">Title</td><td style="padding:10px 12px;border:1px solid #e0e0e0">${meeting.title}</td></tr>
-            <tr><td style="padding:10px 12px;border:1px solid #e0e0e0;font-weight:700">Date</td><td style="padding:10px 12px;border:1px solid #e0e0e0">${dateStr}</td></tr>
+            <tr><td style="padding:10px 12px;border:1px solid #e0e0e0;font-weight:700">Date</td><td style="padding:10px 12px;border:1px solid #e0e0e0">${dateStr}${timeStr}</td></tr>
+            ${meeting.duration_minutes ? `<tr style="background:#f6f8fa"><td style="padding:10px 12px;border:1px solid #e0e0e0;font-weight:700">Duration</td><td style="padding:10px 12px;border:1px solid #e0e0e0">${meeting.duration_minutes} min</td></tr>` : ''}
             <tr style="background:#f6f8fa"><td style="padding:10px 12px;border:1px solid #e0e0e0;font-weight:700">Type</td><td style="padding:10px 12px;border:1px solid #e0e0e0;text-transform:capitalize">${meeting.meeting_type || 'regular'}</td></tr>
             ${meeting.location ? `<tr><td style="padding:10px 12px;border:1px solid #e0e0e0;font-weight:700">Location</td><td style="padding:10px 12px;border:1px solid #e0e0e0">${meeting.location}</td></tr>` : ''}
             ${meeting.chair    ? `<tr style="background:#f6f8fa"><td style="padding:10px 12px;border:1px solid #e0e0e0;font-weight:700">Chair</td><td style="padding:10px 12px;border:1px solid #e0e0e0">${meeting.chair}</td></tr>` : ''}
             <tr><td style="padding:10px 12px;border:1px solid #e0e0e0;font-weight:700">Your Role</td><td style="padding:10px 12px;border:1px solid #e0e0e0">${m.role}</td></tr>
           </table>
           ${meeting.agenda ? `<div style="margin:16px 0"><div style="font-weight:700;font-size:12px;text-transform:uppercase;letter-spacing:0.05em;color:#6b7280;margin-bottom:8px">Agenda</div><div style="background:#f6f8fa;padding:12px 14px;border-radius:6px;font-size:13px;white-space:pre-wrap;line-height:1.6;border-left:3px solid #3b82f6">${meeting.agenda}</div></div>` : ''}
-          <p style="color:#888;font-size:12px;margin-top:24px">A calendar file (.ics) is attached — import it into your calendar app to add this event.<br>This is an automated invitation from SecureOps.</p>
+          <p style="color:#888;font-size:12px;margin-top:24px">Open the attached .ics file to add this meeting to Outlook, Google Calendar, or Apple Calendar.<br>This is an automated invitation from SecureOps.</p>
         </div>`;
       try {
         await mailer.sendMail({
           to: m.email,
-          subject: `[ISSC] Meeting Invitation: ${meeting.title} — ${dateStr}`,
+          subject: `[ISSC] Meeting Invitation: ${meeting.title} — ${dateStr}${timeStr}`,
           html,
           attachments: [{
             filename: 'issc-meeting.ics',
@@ -304,22 +350,23 @@ router.get('/meetings', auth, async (req, res) => {
 router.post('/meetings', auth, requireRole('admin', 'analyst'), async (req, res) => {
   const { title, meeting_date, meeting_type, status, location, chair,
           quorum_met, attendees, agenda, minutes, decisions,
-          action_items, next_meeting_date, member_ids } = req.body;
+          action_items, next_meeting_date, member_ids,
+          meeting_time, duration_minutes } = req.body;
   if (!title || !meeting_date) return res.status(400).json({ error: 'title and meeting_date required' });
   try {
     const r = await db.query(`
       INSERT INTO issc_meetings
         (title, meeting_date, meeting_type, status, location, chair, quorum_met,
          attendees, agenda, minutes, decisions, action_items, next_meeting_date,
-         member_ids, created_by)
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15) RETURNING *
+         member_ids, meeting_time, duration_minutes, created_by)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17) RETURNING *
     `, [title, meeting_date, meeting_type||'regular', status||'scheduled',
         location||null, chair||null, quorum_met??null, attendees||null,
         agenda||null, minutes||null, decisions||null, action_items||null,
-        next_meeting_date||null, JSON.stringify(member_ids||[]), req.user.id]);
+        next_meeting_date||null, JSON.stringify(member_ids||[]),
+        meeting_time||null, duration_minutes||60, req.user.id]);
     const meeting = r.rows[0];
 
-    // Send calendar invitations to selected members (non-blocking)
     if (member_ids?.length) {
       logger.info(`issc POST /meetings: scheduling invitations to ${member_ids.length} member(s) for meeting ${meeting.id}`);
       sendMeetingInvitations(meeting, member_ids).catch(e => logger.error('sendMeetingInvitations unhandled:', e.message));
@@ -332,9 +379,9 @@ router.post('/meetings', auth, requireRole('admin', 'analyst'), async (req, res)
 router.put('/meetings/:id', auth, requireRole('admin', 'analyst'), async (req, res) => {
   const { title, meeting_date, meeting_type, status, location, chair,
           quorum_met, attendees, agenda, minutes, decisions,
-          action_items, next_meeting_date, member_ids } = req.body;
+          action_items, next_meeting_date, member_ids,
+          meeting_time, duration_minutes } = req.body;
   try {
-    // Fetch old values to detect minutes/decisions changes
     const prev = await db.query('SELECT minutes, decisions, member_ids FROM issc_meetings WHERE id=$1', [req.params.id]);
     const old  = prev.rows[0];
 
@@ -354,17 +401,19 @@ router.put('/meetings/:id', auth, requireRole('admin', 'analyst'), async (req, r
         action_items      = COALESCE($13, action_items),
         next_meeting_date = COALESCE($14, next_meeting_date),
         member_ids        = COALESCE($15, member_ids),
+        meeting_time      = COALESCE($16, meeting_time),
+        duration_minutes  = COALESCE($17, duration_minutes),
         updated_at        = NOW()
       WHERE id = $1 RETURNING *
     `, [req.params.id, title||null, meeting_date||null, meeting_type||null,
         status||null, location||null, chair||null, quorum_met??null,
         attendees||null, agenda||null, minutes||null, decisions||null,
         action_items||null, next_meeting_date||null,
-        member_ids !== undefined ? JSON.stringify(member_ids) : null]);
+        member_ids !== undefined ? JSON.stringify(member_ids) : null,
+        meeting_time||null, duration_minutes||null]);
     if (!r.rows.length) return res.status(404).json({ error: 'Meeting not found' });
     const meeting = r.rows[0];
 
-    // If minutes or decisions were newly added/changed, notify members with the evidence email
     const minutesChanged   = minutes   && minutes   !== (old?.minutes   || '');
     const decisionsChanged = decisions && decisions !== (old?.decisions  || '');
     if (minutesChanged || decisionsChanged) {
@@ -373,6 +422,20 @@ router.put('/meetings/:id', auth, requireRole('admin', 'analyst'), async (req, r
     }
 
     res.json(meeting);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// POST /meetings/:id/invite — (re)send calendar invitations to all assigned members
+router.post('/meetings/:id/invite', auth, requireRole('admin', 'analyst'), async (req, res) => {
+  try {
+    const r = await db.query('SELECT * FROM issc_meetings WHERE id=$1', [req.params.id]);
+    if (!r.rows.length) return res.status(404).json({ error: 'Meeting not found' });
+    const meeting   = r.rows[0];
+    const memberIds = Array.isArray(meeting.member_ids) ? meeting.member_ids : [];
+    if (!memberIds.length) return res.json({ sent: 0, message: 'No members assigned to this meeting' });
+    sendMeetingInvitations(meeting, memberIds)
+      .catch(e => logger.error('sendMeetingInvitations unhandled:', e.message));
+    res.json({ sent: memberIds.length, message: `Invitations queued for ${memberIds.length} member(s)` });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 

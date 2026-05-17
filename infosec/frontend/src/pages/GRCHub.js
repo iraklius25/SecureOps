@@ -2456,7 +2456,7 @@ function SteeringTab({ user }) {
   const [editing,  setEditing]  = useState(null);
 
   const blankMember  = { full_name:'', title:'', department:'', email:'', role:'Member', joined_date:'', notes:'' };
-  const blankMeeting = { title:'', meeting_date:'', meeting_type:'regular', status:'scheduled', location:'', chair:'', quorum_met:false, attendees:'', agenda:'', minutes:'', decisions:'', action_items:'', next_meeting_date:'', member_ids:[] };
+  const blankMeeting = { title:'', meeting_date:'', meeting_time:'', duration_minutes:60, meeting_type:'regular', status:'scheduled', location:'', chair:'', quorum_met:false, attendees:'', agenda:'', minutes:'', decisions:'', action_items:'', next_meeting_date:'', member_ids:[] };
   const [form, setForm] = useState(blankMember);
   const [err,  setErr]  = useState('');
 
@@ -2490,7 +2490,7 @@ function SteeringTab({ user }) {
     setEditing(row.id);
     const f = section === 'members'
       ? { full_name: row.full_name, title: row.title||'', department: row.department||'', email: row.email||'', role: row.role||'Member', joined_date: row.joined_date?.slice(0,10)||'', notes: row.notes||'' }
-      : { title: row.title, meeting_date: row.meeting_date?.slice(0,10)||'', meeting_type: row.meeting_type||'regular', status: row.status||'scheduled', location: row.location||'', chair: row.chair||'', quorum_met: row.quorum_met||false, attendees: row.attendees||'', agenda: row.agenda||'', minutes: row.minutes||'', decisions: row.decisions||'', action_items: row.action_items||'', next_meeting_date: row.next_meeting_date?.slice(0,10)||'', member_ids: Array.isArray(row.member_ids) ? row.member_ids : [] };
+      : { title: row.title, meeting_date: row.meeting_date?.slice(0,10)||'', meeting_time: row.meeting_time?.slice(0,5)||'', duration_minutes: row.duration_minutes||60, meeting_type: row.meeting_type||'regular', status: row.status||'scheduled', location: row.location||'', chair: row.chair||'', quorum_met: row.quorum_met||false, attendees: row.attendees||'', agenda: row.agenda||'', minutes: row.minutes||'', decisions: row.decisions||'', action_items: row.action_items||'', next_meeting_date: row.next_meeting_date?.slice(0,10)||'', member_ids: Array.isArray(row.member_ids) ? row.member_ids : [] };
     setForm(f); setShowForm(true);
   };
 
@@ -2500,7 +2500,7 @@ function SteeringTab({ user }) {
     <div>
       <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:16 }}>
         <div>
-          <h2 style={{ fontSize:18, fontWeight:700, margin:0, color:'var(--text)' }}>Information Security Steering Committee</h2>
+          <h2 style={{ fontSize:18, fontWeight:700, margin:0, color:'var(--text1)' }}>Information Security Steering Committee</h2>
           <div style={{ fontSize:12, color:'var(--text2)', marginTop:3 }}>Governance body overseeing information security strategy and risk oversight</div>
         </div>
         {canEdit && (
@@ -2562,9 +2562,20 @@ function SteeringTab({ user }) {
                     </select>
                   </div>
                 </div>
-                <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:12, marginBottom:12 }}>
+                <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr 1fr', gap:12, marginBottom:12 }}>
+                  <div className="form-group">
+                    <label>Start Time
+                      <span style={{ fontWeight:400, color:'var(--text3)', fontSize:11, marginLeft:6 }}>— used in calendar invite</span>
+                    </label>
+                    <input type="time" style={inp} value={form.meeting_time} onChange={setF('meeting_time')} />
+                  </div>
+                  <div className="form-group"><label>Duration (min)</label>
+                    <input type="number" style={inp} min={15} max={480} step={15} value={form.duration_minutes} onChange={setF('duration_minutes')} />
+                  </div>
                   <div className="form-group"><label>Chair</label><input style={inp} value={form.chair} onChange={setF('chair')} /></div>
                   <div className="form-group"><label>Location / Link</label><input style={inp} value={form.location} onChange={setF('location')} /></div>
+                </div>
+                <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12, marginBottom:12 }}>
                   <div className="form-group"><label>Next Meeting Date</label><input type="date" style={inp} value={form.next_meeting_date} onChange={setF('next_meeting_date')} /></div>
                 </div>
                 <div className="form-group" style={{ marginBottom:12 }}>
@@ -2573,7 +2584,7 @@ function SteeringTab({ user }) {
                       — selected members will receive a calendar invitation (.ics)
                     </span>
                   </label>
-                  <div style={{ background:'var(--bg3)', border:'1px solid var(--border)', borderRadius:6, padding:'8px 12px', maxHeight:180, overflowY:'auto' }}>
+                  <div style={{ background:'var(--surface3)', border:'1px solid var(--border2)', borderRadius:6, padding:'8px 12px', maxHeight:180, overflowY:'auto' }}>
                     {members.filter(m => m.is_active).length === 0 ? (
                       <div style={{ fontSize:12, color:'var(--text3)', padding:'4px 0' }}>No active members — add members first</div>
                     ) : members.filter(m => m.is_active).map(m => (
@@ -2660,13 +2671,22 @@ function SteeringTab({ user }) {
           {meetings.length === 0 && <div style={{ ...card, textAlign:'center', color:'var(--text2)', padding:32 }}>No meetings scheduled yet</div>}
           {meetings.map(m => {
             const sc = { scheduled:'#6b7280', completed:'#10b981', cancelled:'#ef4444' };
+            const sendInvites = async () => {
+              try {
+                const r = await api.post(`/issc/meetings/${m.id}/invite`);
+                alert(r.data.message);
+              } catch (ex) { alert(ex.response?.data?.error || 'Failed to send invitations'); }
+            };
             return (
               <div key={m.id} style={{ ...card, borderLeft:`4px solid ${sc[m.status]||'#6b7280'}` }}>
                 <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', flexWrap:'wrap', gap:8, marginBottom:10 }}>
                   <div>
-                    <div style={{ fontWeight:700, fontSize:15, color:'var(--text)' }}>{m.title}</div>
+                    <div style={{ fontWeight:700, fontSize:15, color:'var(--text1)' }}>{m.title}</div>
                     <div style={{ fontSize:12, color:'var(--text2)', marginTop:3 }}>
-                      {fmtDate(m.meeting_date)} · {cap(m.meeting_type)} · Chair: {m.chair||'—'}
+                      {fmtDate(m.meeting_date)}
+                      {m.meeting_time && ` at ${String(m.meeting_time).slice(0,5)}`}
+                      {m.duration_minutes && m.meeting_time ? ` (${m.duration_minutes} min)` : ''}
+                      {` · ${cap(m.meeting_type)} · Chair: ${m.chair||'—'}`}
                       {m.location && ` · ${m.location}`}
                     </div>
                     {Array.isArray(m.member_ids) && m.member_ids.length > 0 && (
@@ -2676,18 +2696,23 @@ function SteeringTab({ user }) {
                       </div>
                     )}
                   </div>
-                  <div style={{ display:'flex', gap:8, alignItems:'center' }}>
+                  <div style={{ display:'flex', gap:8, alignItems:'center', flexWrap:'wrap' }}>
                     <span style={badge(sc[m.status]||'#6b7280')}>{cap(m.status)}</span>
                     {m.quorum_met !== null && <span style={{ fontSize:11, color: m.quorum_met ? '#10b981' : '#ef4444' }}>{m.quorum_met ? '✓ Quorum' : '✗ No quorum'}</span>}
+                    {canEdit && Array.isArray(m.member_ids) && m.member_ids.length > 0 && (
+                      <button style={{ ...btn('primary'), padding:'4px 10px', fontSize:12 }} onClick={sendInvites} title="Send calendar invitations (.ics) to all assigned members">
+                        ✉ Send Invites
+                      </button>
+                    )}
                     {canEdit && <>
                       <button style={{ ...btn(), padding:'4px 10px', fontSize:12 }} onClick={() => startEdit(m)}>Edit</button>
                       <button style={{ ...btn('danger'), padding:'4px 10px', fontSize:12 }} onClick={() => del(m.id)}>Delete</button>
                     </>}
                   </div>
                 </div>
-                {m.agenda && <div style={{ marginBottom:8 }}><div style={{ fontSize:11, color:'var(--text3)', fontWeight:600, marginBottom:3 }}>AGENDA</div><div style={{ fontSize:13, color:'var(--text)', whiteSpace:'pre-wrap', lineHeight:1.5 }}>{m.agenda}</div></div>}
-                {m.decisions && <div style={{ marginBottom:8 }}><div style={{ fontSize:11, color:'var(--text3)', fontWeight:600, marginBottom:3 }}>DECISIONS</div><div style={{ fontSize:13, color:'var(--text)', whiteSpace:'pre-wrap', lineHeight:1.5 }}>{m.decisions}</div></div>}
-                {m.action_items && <div style={{ marginBottom:8 }}><div style={{ fontSize:11, color:'var(--text3)', fontWeight:600, marginBottom:3 }}>ACTION ITEMS</div><div style={{ fontSize:13, color:'var(--text)', whiteSpace:'pre-wrap', lineHeight:1.5 }}>{m.action_items}</div></div>}
+                {m.agenda && <div style={{ marginBottom:8 }}><div style={{ fontSize:11, color:'var(--text3)', fontWeight:600, marginBottom:3 }}>AGENDA</div><div style={{ fontSize:13, color:'var(--text1)', whiteSpace:'pre-wrap', lineHeight:1.5 }}>{m.agenda}</div></div>}
+                {m.decisions && <div style={{ marginBottom:8 }}><div style={{ fontSize:11, color:'var(--text3)', fontWeight:600, marginBottom:3 }}>DECISIONS</div><div style={{ fontSize:13, color:'var(--text1)', whiteSpace:'pre-wrap', lineHeight:1.5 }}>{m.decisions}</div></div>}
+                {m.action_items && <div style={{ marginBottom:8 }}><div style={{ fontSize:11, color:'var(--text3)', fontWeight:600, marginBottom:3 }}>ACTION ITEMS</div><div style={{ fontSize:13, color:'var(--text1)', whiteSpace:'pre-wrap', lineHeight:1.5 }}>{m.action_items}</div></div>}
                 {m.next_meeting_date && <div style={{ fontSize:12, color:'var(--text2)', marginTop:6 }}>Next meeting: <strong>{fmtDate(m.next_meeting_date)}</strong></div>}
               </div>
             );

@@ -69,6 +69,7 @@ run schema_drp.sql                   # Disaster Recovery Planning tables
 run schema_reviews_v2.sql            # extends grc_reviews + grc_programs
 run schema_metrics.sql
 run schema_issc_member_ids.sql
+run schema_issc_meeting_time.sql       # add meeting_time + duration_minutes for calendar invites
 
 echo ""
 echo "=== Done. Verifying table count... ==="
