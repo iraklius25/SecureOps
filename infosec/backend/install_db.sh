@@ -37,7 +37,7 @@ run() {
 # ── Core schema (must be first) ──────────────────────────────────
 run schema.sql
 
-# ── Feature migrations (order matters) ───────────────────────────
+# ── Feature migrations (order matters — do not reorder) ──────────
 run schema_v2.sql
 run schema_platform_v2.sql
 run schema_features_v3.sql
@@ -52,7 +52,6 @@ run schema_gap_framework.sql
 run schema_assets_iso27001.sql
 run schema_assets_ip_nullable.sql
 run schema_maturity.sql
-run schema_maturity_org.sql
 run schema_grc.sql
 run schema_governance.sql
 run schema_raci.sql
@@ -60,7 +59,8 @@ run schema_risk_history.sql
 run schema_risk_notes.sql
 run schema_suppliers.sql
 run schema_ai_systems.sql
-run schema_certifications.sql
+run schema_certifications.sql        # creates cert_organizations
+run schema_maturity_org.sql          # depends on cert_organizations
 run schema_metrics.sql
 run schema_issc_member_ids.sql
 
