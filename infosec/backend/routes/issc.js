@@ -38,15 +38,27 @@ function buildICS(meeting) {
 
 // ── Send meeting invitations with .ics attachment ──────────────
 async function sendMeetingInvitations(meeting, memberIds) {
-  if (!memberIds?.length) return;
+  if (!memberIds?.length) {
+    logger.info('sendMeetingInvitations: no memberIds provided, skipping');
+    return;
+  }
   try {
     const ids = memberIds.filter(id => /^[0-9a-f-]{36}$/i.test(id));
+    logger.info(`sendMeetingInvitations: ${ids.length} valid UUIDs from ${memberIds.length} provided`);
     if (!ids.length) return;
+
+    // Use individual placeholders — more reliable than ANY($1::uuid[]) with node-postgres
+    const placeholders = ids.map((_, i) => `$${i + 1}`).join(',');
     const r = await db.query(
-      `SELECT full_name, email, role FROM issc_members WHERE id = ANY($1::uuid[]) AND email IS NOT NULL AND email <> ''`,
-      [ids]
+      `SELECT id, full_name, email, role FROM issc_members WHERE id IN (${placeholders}) AND email IS NOT NULL AND email <> ''`,
+      ids
     );
-    if (!r.rows.length) return;
+    logger.info(`sendMeetingInvitations: ${r.rows.length} members with email found`);
+    if (!r.rows.length) {
+      logger.warn('sendMeetingInvitations: no members with email addresses — check issc_members table');
+      return;
+    }
+
     const mailer  = require('../services/mailer');
     const ics     = buildICS(meeting);
     const dateStr = new Date(meeting.meeting_date).toLocaleDateString('en-GB', { weekday:'long', year:'numeric', month:'long', day:'numeric' });
@@ -68,16 +80,21 @@ async function sendMeetingInvitations(meeting, memberIds) {
           ${meeting.agenda ? `<div style="margin:16px 0"><div style="font-weight:700;font-size:12px;text-transform:uppercase;letter-spacing:0.05em;color:#6b7280;margin-bottom:8px">Agenda</div><div style="background:#f6f8fa;padding:12px 14px;border-radius:6px;font-size:13px;white-space:pre-wrap;line-height:1.6;border-left:3px solid #3b82f6">${meeting.agenda}</div></div>` : ''}
           <p style="color:#888;font-size:12px;margin-top:24px">A calendar file (.ics) is attached — import it into your calendar app to add this event.<br>This is an automated invitation from SecureOps.</p>
         </div>`;
-      await mailer.sendMail({
-        to: m.email,
-        subject: `[ISSC] Meeting Invitation: ${meeting.title} — ${dateStr}`,
-        html,
-        attachments: [{
-          filename: 'issc-meeting.ics',
-          content:  ics,
-          contentType: 'text/calendar; charset=utf-8; method=REQUEST',
-        }],
-      });
+      try {
+        await mailer.sendMail({
+          to: m.email,
+          subject: `[ISSC] Meeting Invitation: ${meeting.title} — ${dateStr}`,
+          html,
+          attachments: [{
+            filename: 'issc-meeting.ics',
+            content:  ics,
+            contentType: 'text/calendar; charset=utf-8; method=REQUEST',
+          }],
+        });
+        logger.info(`sendMeetingInvitations: invite sent to ${m.email} (${m.full_name})`);
+      } catch (mailErr) {
+        logger.error(`sendMeetingInvitations: failed to send to ${m.email}: ${mailErr.message}`);
+      }
     }
   } catch (e) { logger.error('sendMeetingInvitations error:', e.message); }
 }
@@ -85,15 +102,20 @@ async function sendMeetingInvitations(meeting, memberIds) {
 // ── Send minutes/decisions notification ───────────────────────
 async function sendMeetingMinutes(meeting) {
   const memberIds = Array.isArray(meeting.member_ids) ? meeting.member_ids : [];
-  if (!memberIds.length) return;
+  if (!memberIds.length) {
+    logger.info('sendMeetingMinutes: no member_ids on meeting, skipping');
+    return;
+  }
   if (!meeting.minutes && !meeting.decisions) return;
   try {
     const ids = memberIds.filter(id => /^[0-9a-f-]{36}$/i.test(id));
     if (!ids.length) return;
+    const placeholders = ids.map((_, i) => `$${i + 1}`).join(',');
     const r = await db.query(
-      `SELECT full_name, email FROM issc_members WHERE id = ANY($1::uuid[]) AND email IS NOT NULL AND email <> ''`,
-      [ids]
+      `SELECT full_name, email FROM issc_members WHERE id IN (${placeholders}) AND email IS NOT NULL AND email <> ''`,
+      ids
     );
+    logger.info(`sendMeetingMinutes: ${r.rows.length} recipients found`);
     if (!r.rows.length) return;
     const mailer  = require('../services/mailer');
     const dateStr = new Date(meeting.meeting_date).toLocaleDateString('en-GB', { weekday:'long', year:'numeric', month:'long', day:'numeric' });
@@ -126,11 +148,16 @@ async function sendMeetingMinutes(meeting) {
           <hr style="border:none;border-top:1px solid #e5e7eb;margin:24px 0">
           <p style="color:#888;font-size:12px">This email serves as an official evidence record of ISSC decisions.<br>Automated notification from SecureOps &middot; ${new Date().toLocaleString()}</p>
         </div>`;
-      await mailer.sendMail({
-        to: m.email,
-        subject: `[ISSC] Meeting Minutes & Decisions: ${meeting.title} — ${dateStr}`,
-        html,
-      });
+      try {
+        await mailer.sendMail({
+          to: m.email,
+          subject: `[ISSC] Meeting Minutes & Decisions: ${meeting.title} — ${dateStr}`,
+          html,
+        });
+        logger.info(`sendMeetingMinutes: minutes sent to ${m.email} (${m.full_name})`);
+      } catch (mailErr) {
+        logger.error(`sendMeetingMinutes: failed to send to ${m.email}: ${mailErr.message}`);
+      }
     }
   } catch (e) { logger.error('sendMeetingMinutes error:', e.message); }
 }
@@ -292,9 +319,10 @@ router.post('/meetings', auth, requireRole('admin', 'analyst'), async (req, res)
         next_meeting_date||null, JSON.stringify(member_ids||[]), req.user.id]);
     const meeting = r.rows[0];
 
-    // Send calendar invitations to selected members
+    // Send calendar invitations to selected members (non-blocking)
     if (member_ids?.length) {
-      sendMeetingInvitations(meeting, member_ids).catch(() => {});
+      logger.info(`issc POST /meetings: scheduling invitations to ${member_ids.length} member(s) for meeting ${meeting.id}`);
+      sendMeetingInvitations(meeting, member_ids).catch(e => logger.error('sendMeetingInvitations unhandled:', e.message));
     }
 
     res.status(201).json(meeting);
@@ -340,7 +368,8 @@ router.put('/meetings/:id', auth, requireRole('admin', 'analyst'), async (req, r
     const minutesChanged   = minutes   && minutes   !== (old?.minutes   || '');
     const decisionsChanged = decisions && decisions !== (old?.decisions  || '');
     if (minutesChanged || decisionsChanged) {
-      sendMeetingMinutes(meeting).catch(() => {});
+      logger.info(`issc PUT /meetings/${req.params.id}: minutes/decisions changed, sending evidence email`);
+      sendMeetingMinutes(meeting).catch(e => logger.error('sendMeetingMinutes unhandled:', e.message));
     }
 
     res.json(meeting);

@@ -31,11 +31,11 @@ function createTransport(cfg) {
 async function sendMail({ to, subject, html, attachments }) {
   const cfg = await getSmtpConfig();
   if (cfg.smtp_enabled !== 'true') {
-    logger.debug('mailer: smtp_enabled is false, skipping email');
+    logger.warn(`mailer: smtp_enabled is not "true" (value="${cfg.smtp_enabled}"), skipping "${subject}"`);
     return;
   }
   if (!cfg.smtp_host || !cfg.smtp_from) {
-    logger.debug('mailer: SMTP not configured (missing host or from), skipping');
+    logger.warn(`mailer: SMTP not configured (host="${cfg.smtp_host}", from="${cfg.smtp_from}"), skipping "${subject}"`);
     return;
   }
   try {

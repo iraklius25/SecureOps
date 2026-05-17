@@ -43,9 +43,8 @@ sudo apt install -y nodejs
 # 3. Install PostgreSQL 15 and create the database
 #    See INSTALL.md Step 3 for the full repo setup
 
-# 4. Load all schema files (there are 16 — see INSTALL.md Step 7)
-psql -U infosec_user -d infosec_db -h localhost -f backend/schema.sql
-# ... (run all 16 schema_*.sql files in the order listed in INSTALL.md)
+# 4. Load all schema files (single script handles everything)
+cd backend && bash install_db.sh
 
 # 5. Configure backend
 cd backend && cp .env.example .env   # edit DATABASE_URL and JWT_SECRET

@@ -130,36 +130,25 @@ cd /opt/infosec/infosec
 
 ## STEP 7 — Load the database schema
 
-Run all schema files in order. All commands are safe to re-run.
+A single script applies all schema files in the correct order. It is safe to re-run on an existing database.
 
 ```bash
 cd /opt/infosec/infosec/backend
-
-psql -U infosec_user -d infosec_db -h localhost -f schema.sql
-psql -U infosec_user -d infosec_db -h localhost -f schema_v2.sql
-psql -U infosec_user -d infosec_db -h localhost -f schema_features_v3.sql
-psql -U infosec_user -d infosec_db -h localhost -f schema_v3_fix.sql
-psql -U infosec_user -d infosec_db -h localhost -f schema_fix.sql
-psql -U infosec_user -d infosec_db -h localhost -f schema_cve_cache.sql
-psql -U infosec_user -d infosec_db -h localhost -f schema_gap_assessment.sql
-psql -U infosec_user -d infosec_db -h localhost -f schema_force_password.sql
-psql -U infosec_user -d infosec_db -h localhost -f schema_maturity.sql
-psql -U infosec_user -d infosec_db -h localhost -f schema_grc.sql
-psql -U infosec_user -d infosec_db -h localhost -f schema_raci.sql
-psql -U infosec_user -d infosec_db -h localhost -f schema_ldap.sql
-psql -U infosec_user -d infosec_db -h localhost -f schema_suppliers.sql
-psql -U infosec_user -d infosec_db -h localhost -f schema_platform_v2.sql
-psql -U infosec_user -d infosec_db -h localhost -f schema_ai_systems.sql
-psql -U infosec_user -d infosec_db -h localhost -f schema_audit_log.sql
-psql -U infosec_user -d infosec_db -h localhost -f schema_metrics.sql
-psql -U infosec_user -d infosec_db -h localhost -f schema_governance.sql
+bash install_db.sh
 ```
 
-### Verify — check tables loaded
+Expected output ends with:
+```
+=== Done. Verifying table count... ===
+    Tables in database: 45
+    OK — schema is complete.
+```
+
+### Verify manually (optional)
 
 ```bash
 psql -U infosec_user -d infosec_db -h localhost -c "\dt"
-# Expected: 40+ rows (exact count depends on your PostgreSQL version)
+# Expected: 40+ tables
 ```
 
 ---
@@ -358,9 +347,18 @@ echo "0 3 * * * root certbot renew --quiet" | sudo tee /etc/cron.d/certbot-renew
 
 ## TROUBLESHOOTING
 
-### "password authentication failed" when running seed or psql
-**Cause A — special character in password:** The password contains `$` which must be escaped in `.env`.
-Change `$` to `\$` in the `DATABASE_URL` value (e.g. `S3cur30ps$2026` → `S3cur30ps\$2026`).
+### "password authentication failed" / "Invalid URL" when running seed or psql
+**Cause A — special characters in password:** Some characters must be encoded in the `DATABASE_URL`:
+
+| Character | Replace with |
+|-----------|-------------|
+| `#`       | `%23`       |
+| `$`       | `\$` (in `.env`) or `%24` |
+| `@`       | `%40`       |
+| `:`       | `%3A`       |
+| `/`       | `%2F`       |
+
+Example: password `Admin#2026` → `DATABASE_URL=postgresql://infosec_user:Admin%232026@localhost:5432/infosec_db`
 
 **Cause B — re-running setup on an existing install:** If `CREATE USER` printed `ERROR: role "infosec_user" already exists`, the `WITH PASSWORD` clause was skipped and the role kept its old password. Fix by resetting it manually:
 ```bash
@@ -410,27 +408,10 @@ pm2 logs infosec-api --lines 50
 ```
 
 ### "relation does not exist" error
-One or more schema files were not loaded. Re-run all of them (safe to repeat):
+One or more schema files were not loaded. Re-run the install script (safe to repeat):
 ```bash
 cd /opt/infosec/infosec/backend
-psql -U infosec_user -d infosec_db -h localhost -f schema.sql
-psql -U infosec_user -d infosec_db -h localhost -f schema_v2.sql
-psql -U infosec_user -d infosec_db -h localhost -f schema_features_v3.sql
-psql -U infosec_user -d infosec_db -h localhost -f schema_v3_fix.sql
-psql -U infosec_user -d infosec_db -h localhost -f schema_fix.sql
-psql -U infosec_user -d infosec_db -h localhost -f schema_cve_cache.sql
-psql -U infosec_user -d infosec_db -h localhost -f schema_gap_assessment.sql
-psql -U infosec_user -d infosec_db -h localhost -f schema_force_password.sql
-psql -U infosec_user -d infosec_db -h localhost -f schema_maturity.sql
-psql -U infosec_user -d infosec_db -h localhost -f schema_grc.sql
-psql -U infosec_user -d infosec_db -h localhost -f schema_raci.sql
-psql -U infosec_user -d infosec_db -h localhost -f schema_ldap.sql
-psql -U infosec_user -d infosec_db -h localhost -f schema_suppliers.sql
-psql -U infosec_user -d infosec_db -h localhost -f schema_platform_v2.sql
-psql -U infosec_user -d infosec_db -h localhost -f schema_ai_systems.sql
-psql -U infosec_user -d infosec_db -h localhost -f schema_audit_log.sql
-psql -U infosec_user -d infosec_db -h localhost -f schema_metrics.sql
-psql -U infosec_user -d infosec_db -h localhost -f schema_governance.sql
+bash install_db.sh
 ```
 
 ### Table count is less than 40
