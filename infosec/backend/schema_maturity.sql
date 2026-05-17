@@ -2,7 +2,7 @@ CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
 CREATE TABLE IF NOT EXISTS maturity_assessments (
   id          UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-  framework   VARCHAR(20) NOT NULL CHECK (framework IN ('ISMS', 'ISO42001')),
+  framework   VARCHAR(20) NOT NULL CHECK (framework IN ('ISMS', 'ISO42001', 'NISTCSF', 'PCIDSS', 'SOC2', 'ISO22301', 'GDPR')),
   name        TEXT NOT NULL,
   description TEXT DEFAULT '',
   data        JSONB NOT NULL DEFAULT '{"domains":{}}',

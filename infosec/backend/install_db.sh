@@ -52,6 +52,7 @@ run schema_gap_framework.sql
 run schema_assets_iso27001.sql
 run schema_assets_ip_nullable.sql
 run schema_maturity.sql
+run schema_maturity_frameworks.sql
 run schema_grc.sql
 run schema_governance.sql
 run schema_raci.sql
