@@ -86,6 +86,7 @@ app.use('/api/activity-log',   require('./routes/activityLog'));
 app.use('/api/metrics',        require('./routes/metrics'));
 app.use('/api/issc',           require('./routes/issc'));
 app.use('/api/certifications', require('./routes/certifications'));
+app.use('/api/budget',        require('./routes/budget'));
 
 // ── Static uploads (auth-protected) ───────────────────────────
 const { auth: uploadAuth } = require('./middleware/auth');
@@ -188,6 +189,13 @@ cron.schedule('30 7 * * *', async () => {
   logger.info('Checking overdue asset and risk reviews...');
   const { notifyOverdue } = require('./services/notifier');
   notifyOverdue().catch(e => logger.error('notifyOverdue cron error:', e.message));
+});
+
+// ── Budget license expiry warnings (08:00 daily) ──────────────
+cron.schedule('0 8 * * *', async () => {
+  logger.info('Checking budget license expiry warnings...');
+  const { checkLicenseExpiry } = require('./routes/budget');
+  checkLicenseExpiry().catch(e => logger.error('Budget expiry check error:', e.message));
 });
 
 const PORT = process.env.PORT || 4000;

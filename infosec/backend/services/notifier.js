@@ -314,6 +314,33 @@ async function notifyRiskDelete(risk, deletedBy) {
   } catch (e) { logger.error('notifyRiskDelete error:', e.message); }
 }
 
+// ── Direct helpers (no settings-key guard) for per-item flags ─
+async function notifyEmailDirect(title, message, type = 'info') {
+  try {
+    const r = await db.query(
+      `SELECT key, value FROM settings WHERE key IN ('smtp_host','smtp_from','smtp_to','smtp_enabled')`
+    );
+    const cfg = Object.fromEntries(r.rows.map(row => [row.key, row.value]));
+    if (cfg.smtp_enabled !== 'true') return;
+    if (!cfg.smtp_host || !cfg.smtp_from || !cfg.smtp_to) return;
+    const colorMap = { critical:'#d73a49', high:'#e36209', warning:'#e36209', success:'#3fb950', info:'#0366d6' };
+    const color = colorMap[type] || colorMap.info;
+    const html = `
+      <div style="font-family:sans-serif;max-width:600px">
+        <h2 style="color:${color};margin-bottom:8px">${title}</h2>
+        <div style="color:#444;line-height:1.7;font-size:14px">${message.split(' · ').map(l => `<p style="margin:4px 0">${l}</p>`).join('')}</div>
+        <hr style="border:none;border-top:1px solid #eee;margin:16px 0">
+        <p style="color:#999;font-size:12px">Automated notification from SecureOps &middot; ${new Date().toLocaleString()}</p>
+      </div>`;
+    const mailer = require('./mailer');
+    await mailer.sendMail({ to: cfg.smtp_to, subject: `[SecureOps] ${title}`, html });
+  } catch (e) { logger.error('notifyEmailDirect error:', e.message); }
+}
+
+async function notifyWebhookDirect(opts) { return notifyWebhook(opts); }
+async function notifyInAppDirect(opts)   { return notifyInApp(opts); }
+
 module.exports = { notifyInApp, notifyWebhook, notifyVuln, notifyScanComplete,
                    notifyNewRisk, notifyRiskDelete, notifyApproval, notifyGrcActivity,
-                   notifyCertChange, notifyKpiChange, notifyNewAsset, notifyOverdue };
+                   notifyCertChange, notifyKpiChange, notifyNewAsset, notifyOverdue,
+                   notifyEmailDirect, notifyWebhookDirect, notifyInAppDirect };

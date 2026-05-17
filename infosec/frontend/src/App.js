@@ -23,6 +23,7 @@ import MaturityAssessment    from './pages/MaturityAssessment';
 import GRCHub               from './pages/GRCHub';
 import Metrics              from './pages/Metrics';
 import CertificationTracker from './pages/CertificationTracker';
+import Budget               from './pages/Budget';
 import './App.css';
 
 export const AuthContext = createContext(null);
@@ -271,6 +272,7 @@ const NAV_GROUPS = [
     label: 'GRC & Governance',
     items: [
       { path: '/grc',            label: 'GRC Hub',         icon: '🏛', roles: ['admin','analyst','auditor'] },
+      { path: '/budget',         label: 'IT Budget',       icon: '💰', roles: ['admin','analyst','auditor'] },
       { path: '/metrics',        label: 'KPI / KRI',       icon: '📉', roles: ['admin','analyst','auditor'] },
       { path: '/approvals',      label: 'Approvals',       icon: '🔔', roles: ['admin','analyst'] },
     ]
@@ -548,6 +550,7 @@ export default function App() {
           <Route path="/maturity"        element={<PrivateRoute roles={['admin','analyst','auditor']}><MaturityAssessment /></PrivateRoute>} />
           <Route path="/certifications" element={<PrivateRoute roles={['admin','analyst','auditor']}><CertificationTracker /></PrivateRoute>} />
           <Route path="/grc"        element={<PrivateRoute roles={['admin','analyst','auditor']}><GRCHub /></PrivateRoute>} />
+          <Route path="/budget"     element={<PrivateRoute roles={['admin','analyst','auditor']}><Budget /></PrivateRoute>} />
           <Route path="/metrics"    element={<PrivateRoute roles={['admin','analyst','auditor']}><Metrics /></PrivateRoute>} />
           <Route path="/threat" element={<PrivateRoute roles={['admin','analyst','auditor']}><ThreatIntel /></PrivateRoute>} />
           <Route path="/patches" element={<PrivateRoute roles={['admin','analyst','auditor']}><Patches /></PrivateRoute>} />
