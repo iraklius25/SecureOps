@@ -173,7 +173,7 @@ function FilesPanel({ itemId }) {
 const EMPTY = {
   org_id: '', name: '', description: '', category: 'license', amount: '', currency: 'USD',
   status: 'active', license_expiry_date: '', warn_days_before: 30,
-  is_important: false, notify_smtp: false, notify_webhook: false, notes: '',
+  is_important: false, notify_smtp: false, notify_webhook: false, notes: '', procurement_url: '',
 };
 
 function BudgetModal({ item, orgs, onClose, onSaved }) {
@@ -193,6 +193,7 @@ function BudgetModal({ item, orgs, onClose, onSaved }) {
       notify_smtp:         item.notify_smtp          ?? false,
       notify_webhook:      item.notify_webhook       ?? false,
       notes:               item.notes               || '',
+      procurement_url:     item.procurement_url     || '',
     } : { ...EMPTY }
   );
   const [saving, setSaving] = useState(false);
@@ -309,6 +310,12 @@ function BudgetModal({ item, orgs, onClose, onSaved }) {
               <textarea value={form.notes} onChange={set('notes')} rows={2} placeholder="Internal notes, renewal contacts, etc." />
             </div>
 
+            <div className="form-group" style={{ gridColumn: '1/-1' }}>
+              <label>Procurement / Request URL</label>
+              <input type="url" value={form.procurement_url} onChange={set('procurement_url')} placeholder="https://jira.company.com/browse/PROC-123" />
+              <small style={{ color: 'var(--text3)', fontSize: 11 }}>Link to Jira ticket, Confluence page, procurement request, or any related document.</small>
+            </div>
+
             {/* Flags */}
             <div style={{ gridColumn: '1/-1', display: 'flex', flexDirection: 'column', gap: 10, padding: '12px 0 4px' }}>
               <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 4 }}>Options &amp; Alerts</div>
@@ -407,6 +414,16 @@ function DetailPanel({ item, orgs, onClose, onEdit, onDelete }) {
               <div style={{ fontSize: 13, color: 'var(--text2)', whiteSpace: 'pre-wrap' }}>{item.notes}</div>
             </>
           )}
+        </div>
+      )}
+
+      {/* Procurement URL */}
+      {item.procurement_url && (
+        <div style={{ padding: '12px 20px', borderBottom: '1px solid var(--border)' }}>
+          <div style={{ padding: '8px 0' }}>
+            <div style={{ fontSize: 11, color: 'var(--text3)', fontWeight: 600, textTransform: 'uppercase', marginBottom: 4 }}>Procurement / Request Link</div>
+            <a href={item.procurement_url} target="_blank" rel="noopener noreferrer" style={{ fontSize: 13, color: 'var(--accent)', wordBreak: 'break-all' }}>{item.procurement_url}</a>
+          </div>
         </div>
       )}
 
@@ -581,6 +598,7 @@ export default function Budget() {
                   <th>Status</th>
                   <th>Alerts</th>
                   <th>Files</th>
+                  <th>Proc. Link</th>
                 </tr>
               </thead>
               <tbody>
@@ -630,6 +648,11 @@ export default function Budget() {
                         {parseInt(item.file_count, 10) > 0
                           ? <span style={{ color: 'var(--accent)', fontWeight: 600 }}>{item.file_count} file{item.file_count > 1 ? 's' : ''}</span>
                           : '—'}
+                      </td>
+                      <td style={{ textAlign: 'center' }}>
+                        {item.procurement_url
+                          ? <a href={item.procurement_url} target="_blank" rel="noopener noreferrer" onClick={e => e.stopPropagation()} title={item.procurement_url} style={{ fontSize: 14, color: 'var(--accent)' }}>🔗</a>
+                          : <span style={{ color: 'var(--text3)' }}>—</span>}
                       </td>
                     </tr>
                   );

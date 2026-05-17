@@ -117,7 +117,7 @@ router.post('/', auth, requireRole('admin', 'analyst'), async (req, res) => {
   const {
     org_id, name, description, category, amount, currency,
     status, license_expiry_date, warn_days_before,
-    is_important, notify_smtp, notify_webhook, notes,
+    is_important, notify_smtp, notify_webhook, notes, procurement_url,
   } = req.body;
 
   if (!name?.trim()) return res.status(400).json({ error: 'name is required' });
@@ -126,8 +126,8 @@ router.post('/', auth, requireRole('admin', 'analyst'), async (req, res) => {
     const r = await db.query(`
       INSERT INTO budget_items
         (org_id, name, description, category, amount, currency, status,
-         license_expiry_date, warn_days_before, is_important, notify_smtp, notify_webhook, notes, created_by)
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
+         license_expiry_date, warn_days_before, is_important, notify_smtp, notify_webhook, notes, procurement_url, created_by)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
       RETURNING *`,
       [
         org_id              || null,
@@ -143,6 +143,7 @@ router.post('/', auth, requireRole('admin', 'analyst'), async (req, res) => {
         notify_smtp         ?? false,
         notify_webhook      ?? false,
         notes               || null,
+        procurement_url     || null,
         req.user.id,
       ]
     );
@@ -155,7 +156,7 @@ router.put('/:id', auth, requireRole('admin', 'analyst'), async (req, res) => {
   const {
     org_id, name, description, category, amount, currency,
     status, license_expiry_date, warn_days_before,
-    is_important, notify_smtp, notify_webhook, notes,
+    is_important, notify_smtp, notify_webhook, notes, procurement_url,
   } = req.body;
 
   if (!name?.trim()) return res.status(400).json({ error: 'name is required' });
@@ -165,8 +166,8 @@ router.put('/:id', auth, requireRole('admin', 'analyst'), async (req, res) => {
       UPDATE budget_items SET
         org_id=$1, name=$2, description=$3, category=$4, amount=$5, currency=$6, status=$7,
         license_expiry_date=$8, warn_days_before=$9, is_important=$10,
-        notify_smtp=$11, notify_webhook=$12, notes=$13, updated_at=NOW()
-      WHERE id=$14 RETURNING *`,
+        notify_smtp=$11, notify_webhook=$12, notes=$13, procurement_url=$14, updated_at=NOW()
+      WHERE id=$15 RETURNING *`,
       [
         org_id              || null,
         name.trim(),
@@ -181,6 +182,7 @@ router.put('/:id', auth, requireRole('admin', 'analyst'), async (req, res) => {
         notify_smtp         ?? false,
         notify_webhook      ?? false,
         notes               || null,
+        procurement_url     || null,
         req.params.id,
       ]
     );
@@ -240,6 +242,12 @@ router.post('/:id/files', auth, requireRole('admin', 'analyst'), upload.single('
 /* ── License expiry checker (called from cron) ───────────────── */
 async function checkLicenseExpiry() {
   try {
+    const cfgRes = await db.query(
+      `SELECT key, value FROM settings WHERE key IN ('notify_on_budget_expiry', 'email_on_budget_expiry')`
+    );
+    const cfg = {};
+    for (const row of cfgRes.rows) cfg[row.key] = row.value;
+
     const r = await db.query(`
       SELECT b.*, o.name AS org_name
         FROM budget_items b
@@ -257,17 +265,19 @@ async function checkLicenseExpiry() {
       const orgPart  = item.org_name ? ` · Organization: ${item.org_name}` : '';
       const message  = `${item.name} expires on ${item.license_expiry_date}${orgPart} · ${daysLeft} day(s) remaining`;
 
-      if (item.notify_smtp) {
+      if (item.notify_smtp && cfg.email_on_budget_expiry === 'true') {
         notifier.notifyEmailDirect(title, message, 'warning').catch(() => {});
       }
-      if (item.notify_webhook) {
+      if (item.notify_webhook && cfg.notify_on_budget_expiry === 'true') {
         notifier.notifyWebhookDirect({ title, message, type: 'warning' }).catch(() => {});
       }
 
-      await notifier.notifyInAppDirect({
-        title, message, type: 'warning', resource: 'budget', resource_id: item.id,
-        link: '/budget',
-      }).catch(() => {});
+      if (item.notify_smtp || item.notify_webhook) {
+        await notifier.notifyInAppDirect({
+          title, message, type: 'warning', resource: 'budget', resource_id: item.id,
+          link: '/budget',
+        }).catch(() => {});
+      }
     }
   } catch (e) {
     logger.error('Budget license expiry check error:', e.message);

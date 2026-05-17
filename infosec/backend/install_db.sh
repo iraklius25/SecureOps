@@ -63,6 +63,9 @@ run schema_ai_systems.sql
 run schema_certifications.sql        # creates cert_organizations
 run schema_maturity_org.sql          # depends on cert_organizations
 run schema_budget.sql                # depends on cert_organizations
+run schema_budget_v2.sql             # add procurement_url to budget_items
+run schema_bcp.sql                   # Business Continuity Planning tables
+run schema_drp.sql                   # Disaster Recovery Planning tables
 run schema_reviews_v2.sql            # extends grc_reviews + grc_programs
 run schema_metrics.sql
 run schema_issc_member_ids.sql

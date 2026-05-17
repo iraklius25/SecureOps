@@ -24,6 +24,8 @@ import GRCHub               from './pages/GRCHub';
 import Metrics              from './pages/Metrics';
 import CertificationTracker from './pages/CertificationTracker';
 import Budget               from './pages/Budget';
+import BCP                 from './pages/BCP';
+import DRP                 from './pages/DRP';
 import './App.css';
 
 export const AuthContext = createContext(null);
@@ -265,6 +267,8 @@ const NAV_GROUPS = [
       { path: '/compliance',     label: 'Compliance',      icon: '✅', roles: ['admin','analyst','auditor'] },
       { path: '/maturity',       label: 'Maturity',        icon: '📈', roles: ['admin','analyst','auditor'] },
       { path: '/certifications', label: 'Certifications',  icon: '🏆', roles: ['admin','analyst','auditor'] },
+      { path: '/bcp',            label: 'Business Continuity', icon: '🔄', roles: ['admin','analyst','auditor'] },
+      { path: '/drp',            label: 'Disaster Recovery',   icon: '⚡', roles: ['admin','analyst','auditor'] },
       { path: '/reports',        label: 'Reports',         icon: '📊', roles: ['admin','analyst','auditor'] },
     ]
   },
@@ -549,6 +553,8 @@ export default function App() {
           <Route path="/compliance" element={<PrivateRoute roles={['admin','analyst','auditor']}><Compliance /></PrivateRoute>} />
           <Route path="/maturity"        element={<PrivateRoute roles={['admin','analyst','auditor']}><MaturityAssessment /></PrivateRoute>} />
           <Route path="/certifications" element={<PrivateRoute roles={['admin','analyst','auditor']}><CertificationTracker /></PrivateRoute>} />
+          <Route path="/bcp"           element={<PrivateRoute roles={['admin','analyst','auditor']}><BCP /></PrivateRoute>} />
+          <Route path="/drp"           element={<PrivateRoute roles={['admin','analyst','auditor']}><DRP /></PrivateRoute>} />
           <Route path="/grc"        element={<PrivateRoute roles={['admin','analyst','auditor']}><GRCHub /></PrivateRoute>} />
           <Route path="/budget"     element={<PrivateRoute roles={['admin','analyst','auditor']}><Budget /></PrivateRoute>} />
           <Route path="/metrics"    element={<PrivateRoute roles={['admin','analyst','auditor']}><Metrics /></PrivateRoute>} />

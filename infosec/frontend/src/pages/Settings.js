@@ -80,6 +80,7 @@ function EmailTab({ form, setForm, save, saved, testing, testWebhook, testMsg })
     { key: 'email_on_grc_activity',  label: 'GRC Hub Activity',              desc: 'Send email on GRC program, task, or document changes' },
     { key: 'email_on_cert_change',   label: 'Certification Tracker Change',  desc: 'Send email when a certification phase or status changes' },
     { key: 'email_on_kpi_change',    label: 'KPI / KRI Status Change',       desc: 'Send email when a metric RAG status changes' },
+    { key: 'email_on_budget_expiry', label: 'IT Budget License Expiry',       desc: 'Send email when a budget item license is approaching expiry (per-item opt-in)' },
   ];
 
   return (
@@ -918,6 +919,8 @@ export default function Settings() {
                 desc: 'Alert when a new asset is manually added to the inventory — IP/hostname, classification, category, owner' },
               { key: 'notify_on_overdue',       label: 'Notify on Overdue Reviews (Daily at 07:30)',
                 desc: 'Daily digest of overdue asset reviews and open risk reviews past their due date' },
+              { key: 'notify_on_budget_expiry', label: 'Notify on IT Budget License Expiry',
+                desc: 'Send Slack/Teams alert and in-app notification when a budget item license is approaching expiry' },
             ].map(({ key, label, desc }) => (
               <div key={key} style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 14 }}>
                 <label style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', flex: 1 }}>
